@@ -75,12 +75,11 @@ jobs:
           default: true
           buildtargets: esp32s3
           ldproxy: false
-          version: nightly
       - uses: Swatinem/rust-cache@v2
 
       # The actual shipping target, not a proxy for it.
       - name: Build the device crates for xtensa-esp32s3-none-elf
         run: |
-          cargo build -Z build-std=core \
+          cargo build build-std=core \
             -p glucobeacon-core -p glucobeacon-proto -p glucobeacon-display \
             --no-default-features --target xtensa-esp32s3-none-elf

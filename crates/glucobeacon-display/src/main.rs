@@ -1,10 +1,14 @@
 //! Command-line entry point for the glucobeacon display node.
 //!
 //! Runs the workstation simulator: the panel writes to an image file, the
-//! buzzer and LED log, and the button is the Enter key.
+//! buzzer and LED log, and the button is the Enter key. With `--window` the
+//! panel is also mirrored into a window on the host.
 
 use std::net::SocketAddr;
 use std::path::PathBuf;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::mpsc::Sender;
 use std::time::{Duration as StdDuration, Instant};
 
 use anyhow::{Context, Result};
@@ -17,14 +21,14 @@ use tracing::{debug, info, warn};
 use glucobeacon_display::PANEL_BYTES;
 use glucobeacon_display::app::DisplayApp;
 use glucobeacon_display::hal::{Button, Buzzer, Indicator, Panel};
-use glucobeacon_display::sim::{ConsoleBuzzer, ConsoleLed, SimPanel, StdinButton};
+use glucobeacon_display::sim::{ConsoleBuzzer, ConsoleLed, PanelFrame, SimPanel, StdinButton};
 use glucobeacon_display::ui::{self, Frame, PANEL_HEIGHT, PANEL_WIDTH};
 
 /// How long to block waiting for a frame. Also the tick rate: fast enough that
 /// a button press feels instant, slow enough to idle at nearly no CPU.
 const TICK: StdDuration = StdDuration::from_millis(200);
 
-#[derive(Parser, Debug)]
+#[derive(Parser, Clone, Debug)]
 #[command(
     name = "glucobeacon-display",
     version,
@@ -43,6 +47,18 @@ struct Cli {
     #[arg(long, value_name = "PATH", default_value = "glucobeacon-panel.pbm")]
     panel: PathBuf,
 
+    /// Also show the panel in a window on this machine.
+    #[cfg(feature = "window")]
+    #[arg(long)]
+    window: bool,
+
+    /// How many times to magnify the panel in the window (1, 2, 4, or 8).
+    ///
+    /// The window is resizable either way; this only sets its opening size.
+    #[cfg(feature = "window")]
+    #[arg(long, value_name = "N", default_value_t = 1, value_parser = clap::value_parser!(u8).range(1..=8))]
+    window_scale: u8,
+
     /// Acknowledge each packet back to the gateway.
     #[arg(long)]
     ack: bool,
@@ -56,13 +72,77 @@ fn main() -> Result<()> {
     let cli = Cli::parse();
     init_tracing(&cli.log)?;
 
+    #[cfg(feature = "window")]
+    if cli.window {
+        return run_windowed(&cli);
+    }
+
+    run_node(&cli, None, &AtomicBool::new(false), &Arc::default())
+}
+
+/// Runs the node with its panel mirrored into a window.
+///
+/// The window goes on this thread and the node onto a worker, not the other way
+/// round: macOS aborts on AppKit calls from anywhere but the main thread.
+#[cfg(feature = "window")]
+fn run_windowed(cli: &Cli) -> Result<()> {
+    use anyhow::anyhow;
+    use glucobeacon_display::window::PanelWindow;
+    use std::sync::mpsc;
+
+    let (frames_tx, frames_rx) = mpsc::channel();
+    let stop = Arc::new(AtomicBool::new(false));
+    let press = Arc::new(AtomicBool::new(false));
+
+    let window = PanelWindow::open(PANEL_WIDTH, PANEL_HEIGHT, cli.window_scale)
+        .map_err(|error| anyhow!("{error}"))
+        .context("opening the panel window")?;
+
+    let node = {
+        let cli = cli.clone();
+        let stop = Arc::clone(&stop);
+        let press = Arc::clone(&press);
+        std::thread::Builder::new()
+            .name("glucobeacon-node".to_owned())
+            .spawn(move || {
+                let result = run_node(&cli, Some(frames_tx), &stop, &press);
+                // However this ended — a bind failure, a dead link, the window
+                // asking it to stop — the window must not be left up waiting for
+                // frames that are never coming.
+                stop.store(true, Ordering::Release);
+                result
+            })
+            .context("starting the display node")?
+    };
+
+    window.run(&frames_rx, &press, &stop);
+
+    node.join()
+        .map_err(|_| anyhow!("the display node thread panicked"))?
+}
+
+/// The display node itself: link in, panel, buzzer, LED and button out.
+///
+/// Returns when `stop` is set; without a window nothing ever sets it, and this
+/// runs until interrupted. Every refresh is mirrored to `frames` if given, and
+/// `press` is the silence button's latch, shared so the window can set it too.
+fn run_node(
+    cli: &Cli,
+    frames: Option<Sender<PanelFrame>>,
+    stop: &AtomicBool,
+    press: &Arc<AtomicBool>,
+) -> Result<()> {
     let mut link = UdpLink::bind(cli.listen, cli.peer, TICK)
         .with_context(|| format!("binding the link to {}", cli.listen))?;
     let mut panel = SimPanel::<PANEL_BYTES>::new(PANEL_WIDTH, PANEL_HEIGHT, &cli.panel)
         .context("sizing the panel framebuffer")?;
+    if let Some(frames) = frames {
+        panel.mirror_to(frames);
+    }
     let mut buzzer = ConsoleBuzzer::new();
     let mut led = ConsoleLed::new();
-    let mut button = StdinButton::spawn().context("watching stdin for button presses")?;
+    let mut button = StdinButton::spawn_with_latch(Arc::clone(press))
+        .context("watching stdin for button presses")?;
 
     let mut app = DisplayApp::default();
     let mut seq = SeqCounter::new();
@@ -75,7 +155,9 @@ fn main() -> Result<()> {
         "display node starting; press Enter to silence an alarm"
     );
 
-    loop {
+    // The first tick always paints, so the window has a frame within one tick
+    // of opening without a second refresh being spent here to arrange it.
+    while !stop.load(Ordering::Acquire) {
         // The link's receive timeout is what paces this loop.
         match link.recv() {
             Ok(Some(packet)) => {
@@ -135,6 +217,9 @@ fn main() -> Result<()> {
             repaint(&mut panel, &app, uptime)?;
         }
     }
+
+    info!(refreshes = panel.flushes(), "display node stopping");
+    Ok(())
 }
 
 fn repaint(panel: &mut SimPanel<PANEL_BYTES>, app: &DisplayApp, uptime: Duration) -> Result<()> {
@@ -199,6 +284,29 @@ mod tests {
         assert_eq!(cli.peer.to_string(), "10.0.0.2:5001");
         assert_eq!(cli.panel, PathBuf::from("/tmp/panel.pbm"));
         assert!(cli.ack);
+    }
+
+    #[cfg(feature = "window")]
+    #[test]
+    fn the_window_is_off_unless_asked_for() {
+        // A sim run over SSH or in CI has no display to open one on.
+        let cli = Cli::try_parse_from(["glucobeacon-display"]).expect("parse");
+        assert!(!cli.window);
+        assert_eq!(cli.window_scale, 1);
+    }
+
+    #[cfg(feature = "window")]
+    #[test]
+    fn the_window_scale_is_bounded() {
+        let cli = Cli::try_parse_from(["glucobeacon-display", "--window", "--window-scale", "4"])
+            .expect("parse");
+        assert!(cli.window);
+        assert_eq!(cli.window_scale, 4);
+
+        // A scale minifb has no variant for, or one that would open a window
+        // larger than any monitor, is a typo rather than a request.
+        assert!(Cli::try_parse_from(["glucobeacon-display", "--window-scale", "0"]).is_err());
+        assert!(Cli::try_parse_from(["glucobeacon-display", "--window-scale", "16"]).is_err());
     }
 
     #[test]

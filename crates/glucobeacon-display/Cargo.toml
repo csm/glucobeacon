@@ -23,8 +23,14 @@ tracing-subscriber = { version = "0.3.23", features = [
 ], optional = true }
 embedded-hal = { version = "1.0", optional = true }
 
+# The host window only. Pure Rust and no system packages to install: it dlopens
+# X11 or Wayland on Linux and talks to AppKit directly on macOS, so `--features
+# window` needs nothing that `cargo build` cannot get for itself. The obvious
+# alternative, embedded-graphics-simulator, wants SDL2 from a package manager.
+minifb = { version = "0.28.0", optional = true }
+
 [features]
-default = ["sim"]
+default = ["sim", "window"]
 
 # Just the standard library. An ESP-IDF firmware build wants this and not
 # `sim`: it has `std`, but it has no use for an argument parser or a terminal
@@ -47,6 +53,11 @@ sim = [
   "dep:tracing-subscriber",
   "glucobeacon-proto/udp-link",
 ]
+
+# Mirrors the simulated panel into a window on the host, so the layout can be
+# watched live instead of by reopening an image file. Off in a `--no-default-
+# features` build: a headless sim in CI or a container has no use for it.
+window = ["sim", "dep:minifb"]
 
 # The binary is the simulator.
 [[bin]]

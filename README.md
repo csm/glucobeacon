@@ -26,7 +26,7 @@ crates/
 ```
 
 `core` and `proto` are `no_std` and allocation-free, and so is all of `display`
-except its simulator module. CI cross-compiles them for a bare-metal target to
+except its simulator and host-window modules. CI cross-compiles them for a bare-metal target to
 keep it that way. Both nodes depend on both shared crates, so neither end can
 drift on what a reading means or when it should alarm.
 
@@ -41,7 +41,7 @@ the protocol over UDP instead of over the air.
 In one terminal:
 
 ```sh
-cargo run -p glucobeacon-display -- --panel panel.pbm
+cargo run -p glucobeacon-display -- --window
 ```
 
 In another:
@@ -50,9 +50,24 @@ In another:
 cargo run -p glucobeacon-gateway -- --demo
 ```
 
-The display writes `panel.pbm` on every refresh — open it in any image viewer to
-see what the e-ink would show. The buzzer and LED appear as log lines. Press
-Enter in the display's terminal to silence an alarm.
+`--window` opens a window on this machine showing the panel, which is the
+quickest way to work on the layout with no hardware in front of you. It updates
+only when the panel refreshes, because that is the only time real e-ink changes.
+Space or Enter over the window silences an alarm, as does Enter in the terminal;
+Esc closes it and stops the node. `--window-scale 2` opens it magnified, and the
+window is resizable either way.
+
+The window needs no system packages — no SDL2, no Homebrew — and works on macOS,
+Linux and Windows. Leave `--window` off and the sim runs headless, which is what
+CI and a container want:
+
+```sh
+cargo run -p glucobeacon-display -- --panel panel.pbm
+```
+
+Either way the display writes `--panel` (default `glucobeacon-panel.pbm`) on
+every refresh — a netpbm bitmap any image viewer will open. The buzzer and LED
+appear as log lines.
 
 The demo waveform sweeps 40–260 mg/dL over 45 minutes, so it crosses every alarm
 threshold in both directions while you watch.
@@ -105,7 +120,7 @@ The firmware crates are written but **not yet compiled** — see
 [firmware/README.md](firmware/README.md) for exactly what that means. The
 display node also runs as a workstation simulator, with the panel, buzzer, LED,
 and button behind the traits in `glucobeacon-display::hal` and the radio behind
-`Link`.
+`Link`, and the panel can be watched live in a host window.
 
 ## Development
 

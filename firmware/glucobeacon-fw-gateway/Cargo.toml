@@ -1,0 +1,41 @@
+# Its own workspace: this crate builds only under the Xtensa toolchain.
+[workspace]
+
+[package]
+name = "glucobeacon-fw-gateway"
+description = "Gateway firmware for the Heltec WiFi LoRa 32 V3"
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+publish = false
+resolver = "2"
+
+[dependencies]
+# The Dexcom client without reqwest: ESP-IDF already links mbedTLS, and a
+# second TLS stack would be pure cost here.
+glucobeacon-dexcom = { path = "../../crates/glucobeacon-dexcom", default-features = false }
+glucobeacon-core = { path = "../../crates/glucobeacon-core" }
+glucobeacon-proto = { path = "../../crates/glucobeacon-proto" }
+glucobeacon-gateway = { path = "../../crates/glucobeacon-gateway" }
+
+esp-idf-svc = { version = "0.51", features = ["critical-section", "embassy-time-driver"] }
+embedded-svc = "0.28"
+embedded-hal = "1.0"
+embedded-hal-bus = "0.3"
+lora-phy = "3.0"
+
+anyhow = "1"
+futures-lite = "2"
+log = "0.4"
+thiserror = "2"
+
+[build-dependencies]
+embuild = "0.33"
+
+[profile.release]
+opt-level = "s"
+lto = "fat"
+codegen-units = 1
+
+[profile.dev]
+opt-level = 1

@@ -1,0 +1,229 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1900" height="1316" viewBox="0 0 1900 1316">
+<rect width="1900" height="1316" fill="#ffffff"/>
+<text x="48.0" y="46.0" font-family="'DejaVu Sans', Helvetica, Arial, sans-serif" font-size="27" font-weight="bold" fill="#111827" text-anchor="start" opacity="1.0">GlucoBeacon — Display Node</text>
+<text x="48.0" y="70.0" font-family="'DejaVu Sans', Helvetica, Arial, sans-serif" font-size="13" font-weight="normal" fill="#6b7280" text-anchor="start" opacity="1.0">Heltec WiFi LoRa 32 V3  ·  ESP32-S3FN8 + SX1262  ·  Waveshare 7.5in e-Paper</text>
+<text x="1852.0" y="40.0" font-family="'DejaVu Sans', Helvetica, Arial, sans-serif" font-size="13" font-weight="bold" fill="#6b7280" text-anchor="end" opacity="1.0">wiring v1.2</text>
+<text x="1852.0" y="60.0" font-family="ui-monospace, 'DejaVu Sans Mono', Menlo, Consolas, monospace" font-size="10.5" font-weight="normal" fill="#6b7280" text-anchor="end" opacity="1.0">generated from firmware/glucobeacon-fw-display/src/board.rs</text>
+<text x="1852.0" y="76.0" font-family="ui-monospace, 'DejaVu Sans Mono', Menlo, Consolas, monospace" font-size="10.5" font-weight="normal" fill="#6b7280" text-anchor="end" opacity="1.0">regenerate with tools/wiring/render.sh — do not edit by hand</text>
+<line x1="48.0" y1="96.0" x2="1852.0" y2="96.0" stroke="#d1d5db" stroke-width="1.4" stroke-linecap="round"/>
+<rect x="610.0" y="168.0" width="300.0" height="880.0" rx="12" fill="#ffffff" stroke="#111827" stroke-width="2.2"/>
+<text x="760.0" y="198.0" font-family="'DejaVu Sans', Helvetica, Arial, sans-serif" font-size="15" font-weight="bold" fill="#111827" text-anchor="middle" opacity="1.0">Heltec WiFi LoRa 32 V3</text>
+<text x="760.0" y="218.0" font-family="'DejaVu Sans', Helvetica, Arial, sans-serif" font-size="10.5" font-weight="normal" fill="#6b7280" text-anchor="middle" opacity="1.0">ESP32-S3FN8 · 512 KB SRAM · 8 MB flash</text>
+<text x="760.0" y="234.0" font-family="'DejaVu Sans', Helvetica, Arial, sans-serif" font-size="10.5" font-weight="normal" fill="#6b7280" text-anchor="middle" opacity="1.0">all GPIO are 3.3 V</text>
+<line x1="630.0" y1="246.0" x2="890.0" y2="246.0" stroke="#d1d5db" stroke-width="1.2" stroke-linecap="round"/>
+<rect x="96.0" y="264.0" width="300.0" height="390.0" rx="8" fill="#f3f4f6" stroke="#9ca3af" stroke-width="1.6" stroke-dasharray="6 4"/>
+<text x="110.0" y="285.0" font-family="'DejaVu Sans', Helvetica, Arial, sans-serif" font-size="13.5" font-weight="bold" fill="#374151" text-anchor="start" opacity="1.0">SX1262 LoRa radio</text>
+<text x="110.0" y="301.0" font-family="'DejaVu Sans', Helvetica, Arial, sans-serif" font-size="10.5" font-weight="normal" fill="#6b7280" text-anchor="start" opacity="1.0">on-module, SPI2</text>
+<rect x="334.0" y="272.0" width="52.0" height="17.0" rx="8" fill="#e5e7eb" stroke="none" stroke-width="1.4"/>
+<text x="360.0" y="284.0" font-family="'DejaVu Sans', Helvetica, Arial, sans-serif" font-size="9.5" font-weight="bold" fill="#374151" text-anchor="middle" opacity="1.0">FIXED</text>
+<text x="382.0" y="319.0" font-family="ui-monospace, 'DejaVu Sans Mono', Menlo, Consolas, monospace" font-size="12.5" font-weight="bold" fill="#7c3aed" text-anchor="end" opacity="1.0">NSS</text>
+<text x="382.0" y="333.0" font-family="'DejaVu Sans', Helvetica, Arial, sans-serif" font-size="9.5" font-weight="normal" fill="#6b7280" text-anchor="end" opacity="1.0">chip select</text>
+<circle cx="396.0" cy="321.0" r="3.4" fill="#7c3aed"/>
+<text x="382.0" y="365.0" font-family="ui-monospace, 'DejaVu Sans Mono', Menlo, Consolas, monospace" font-size="12.5" font-weight="bold" fill="#7c3aed" text-anchor="end" opacity="1.0">SCK</text>
+<circle cx="396.0" cy="367.0" r="3.4" fill="#7c3aed"/>
+<text x="382.0" y="411.0" font-family="ui-monospace, 'DejaVu Sans Mono', Menlo, Consolas, monospace" font-size="12.5" font-weight="bold" fill="#7c3aed" text-anchor="end" opacity="1.0">MOSI</text>
+<circle cx="396.0" cy="413.0" r="3.4" fill="#7c3aed"/>
+<text x="382.0" y="457.0" font-family="ui-monospace, 'DejaVu Sans Mono', Menlo, Consolas, monospace" font-size="12.5" font-weight="bold" fill="#7c3aed" text-anchor="end" opacity="1.0">MISO</text>
+<circle cx="396.0" cy="459.0" r="3.4" fill="#7c3aed"/>
+<text x="382.0" y="503.0" font-family="ui-monospace, 'DejaVu Sans Mono', Menlo, Consolas, monospace" font-size="12.5" font-weight="bold" fill="#b45309" text-anchor="end" opacity="1.0">RST</text>
+<text x="382.0" y="517.0" font-family="'DejaVu Sans', Helvetica, Arial, sans-serif" font-size="9.5" font-weight="normal" fill="#6b7280" text-anchor="end" opacity="1.0">active low</text>
+<circle cx="396.0" cy="505.0" r="3.4" fill="#b45309"/>
+<text x="382.0" y="549.0" font-family="ui-monospace, 'DejaVu Sans Mono', Menlo, Consolas, monospace" font-size="12.5" font-weight="bold" fill="#b45309" text-anchor="end" opacity="1.0">BUSY</text>
+<text x="382.0" y="563.0" font-family="'DejaVu Sans', Helvetica, Arial, sans-serif" font-size="9.5" font-weight="normal" fill="#6b7280" text-anchor="end" opacity="1.0">high while working</text>
+<circle cx="396.0" cy="551.0" r="3.4" fill="#b45309"/>
+<text x="382.0" y="595.0" font-family="ui-monospace, 'DejaVu Sans Mono', Menlo, Consolas, monospace" font-size="12.5" font-weight="bold" fill="#b45309" text-anchor="end" opacity="1.0">DIO1</text>
+<text x="382.0" y="609.0" font-family="'DejaVu Sans', Helvetica, Arial, sans-serif" font-size="9.5" font-weight="normal" fill="#6b7280" text-anchor="end" opacity="1.0">tx/rx done irq</text>
+<circle cx="396.0" cy="597.0" r="3.4" fill="#b45309"/>
+<text x="110.0" y="634.0" font-family="'DejaVu Sans', Helvetica, Arial, sans-serif" font-size="9.5" font-weight="normal" fill="#9a3412" text-anchor="start" opacity="1.0">Soldered to the module. These seven pins are not</text>
+<text x="110.0" y="646.0" font-family="'DejaVu Sans', Helvetica, Arial, sans-serif" font-size="9.5" font-weight="normal" fill="#9a3412" text-anchor="start" opacity="1.0">available for anything else.</text>
+<rect x="548.0" y="309.0" width="62.0" height="24.0" rx="6" fill="#ffffff" stroke="#7c3aed" stroke-width="1.6"/>
+<text x="579.0" y="325.5" font-family="ui-monospace, 'DejaVu Sans Mono', Menlo, Consolas, monospace" font-size="12.5" font-weight="bold" fill="#7c3aed" text-anchor="middle" opacity="1.0">IO8</text>
+<line x1="396.0" y1="321.0" x2="548.0" y2="321.0" stroke="#7c3aed" stroke-width="2.0" stroke-linecap="round"/>
+<rect x="548.0" y="355.0" width="62.0" height="24.0" rx="6" fill="#ffffff" stroke="#7c3aed" stroke-width="1.6"/>
+<text x="579.0" y="371.5" font-family="ui-monospace, 'DejaVu Sans Mono', Menlo, Consolas, monospace" font-size="12.5" font-weight="bold" fill="#7c3aed" text-anchor="middle" opacity="1.0">IO9</text>
+<line x1="396.0" y1="367.0" x2="548.0" y2="367.0" stroke="#7c3aed" stroke-width="2.0" stroke-linecap="round"/>
+<rect x="548.0" y="401.0" width="62.0" height="24.0" rx="6" fill="#ffffff" stroke="#7c3aed" stroke-width="1.6"/>
+<text x="579.0" y="417.5" font-family="ui-monospace, 'DejaVu Sans Mono', Menlo, Consolas, monospace" font-size="12.5" font-weight="bold" fill="#7c3aed" text-anchor="middle" opacity="1.0">IO10</text>
+<line x1="396.0" y1="413.0" x2="548.0" y2="413.0" stroke="#7c3aed" stroke-width="2.0" stroke-linecap="round"/>
+<rect x="548.0" y="447.0" width="62.0" height="24.0" rx="6" fill="#ffffff" stroke="#7c3aed" stroke-width="1.6"/>
+<text x="579.0" y="463.5" font-family="ui-monospace, 'DejaVu Sans Mono', Menlo, Consolas, monospace" font-size="12.5" font-weight="bold" fill="#7c3aed" text-anchor="middle" opacity="1.0">IO11</text>
+<line x1="396.0" y1="459.0" x2="548.0" y2="459.0" stroke="#7c3aed" stroke-width="2.0" stroke-linecap="round"/>
+<rect x="548.0" y="493.0" width="62.0" height="24.0" rx="6" fill="#ffffff" stroke="#b45309" stroke-width="1.6"/>
+<text x="579.0" y="509.5" font-family="ui-monospace, 'DejaVu Sans Mono', Menlo, Consolas, monospace" font-size="12.5" font-weight="bold" fill="#b45309" text-anchor="middle" opacity="1.0">IO12</text>
+<line x1="396.0" y1="505.0" x2="548.0" y2="505.0" stroke="#b45309" stroke-width="2.0" stroke-linecap="round"/>
+<rect x="548.0" y="539.0" width="62.0" height="24.0" rx="6" fill="#ffffff" stroke="#b45309" stroke-width="1.6"/>
+<text x="579.0" y="555.5" font-family="ui-monospace, 'DejaVu Sans Mono', Menlo, Consolas, monospace" font-size="12.5" font-weight="bold" fill="#b45309" text-anchor="middle" opacity="1.0">IO13</text>
+<line x1="396.0" y1="551.0" x2="548.0" y2="551.0" stroke="#b45309" stroke-width="2.0" stroke-linecap="round"/>
+<rect x="548.0" y="585.0" width="62.0" height="24.0" rx="6" fill="#ffffff" stroke="#b45309" stroke-width="1.6"/>
+<text x="579.0" y="601.5" font-family="ui-monospace, 'DejaVu Sans Mono', Menlo, Consolas, monospace" font-size="12.5" font-weight="bold" fill="#b45309" text-anchor="middle" opacity="1.0">IO14</text>
+<line x1="396.0" y1="597.0" x2="548.0" y2="597.0" stroke="#b45309" stroke-width="2.0" stroke-linecap="round"/>
+<rect x="96.0" y="680.0" width="300.0" height="206.0" rx="8" fill="#f3f4f6" stroke="#9ca3af" stroke-width="1.6" stroke-dasharray="6 4"/>
+<text x="110.0" y="701.0" font-family="'DejaVu Sans', Helvetica, Arial, sans-serif" font-size="13.5" font-weight="bold" fill="#374151" text-anchor="start" opacity="1.0">SSD1306 OLED</text>
+<text x="110.0" y="717.0" font-family="'DejaVu Sans', Helvetica, Arial, sans-serif" font-size="10.5" font-weight="normal" fill="#6b7280" text-anchor="start" opacity="1.0">on-module, I2C, 128x64</text>
+<rect x="334.0" y="688.0" width="52.0" height="17.0" rx="8" fill="#e5e7eb" stroke="none" stroke-width="1.4"/>
+<text x="360.0" y="700.0" font-family="'DejaVu Sans', Helvetica, Arial, sans-serif" font-size="9.5" font-weight="bold" fill="#374151" text-anchor="middle" opacity="1.0">FIXED</text>
+<text x="382.0" y="735.0" font-family="ui-monospace, 'DejaVu Sans Mono', Menlo, Consolas, monospace" font-size="12.5" font-weight="bold" fill="#0f766e" text-anchor="end" opacity="1.0">SDA</text>
+<circle cx="396.0" cy="737.0" r="3.4" fill="#0f766e"/>
+<text x="382.0" y="781.0" font-family="ui-monospace, 'DejaVu Sans Mono', Menlo, Consolas, monospace" font-size="12.5" font-weight="bold" fill="#0f766e" text-anchor="end" opacity="1.0">SCL</text>
+<circle cx="396.0" cy="783.0" r="3.4" fill="#0f766e"/>
+<text x="382.0" y="827.0" font-family="ui-monospace, 'DejaVu Sans Mono', Menlo, Consolas, monospace" font-size="12.5" font-weight="bold" fill="#b45309" text-anchor="end" opacity="1.0">RST</text>
+<circle cx="396.0" cy="829.0" r="3.4" fill="#b45309"/>
+<text x="110.0" y="866.0" font-family="'DejaVu Sans', Helvetica, Arial, sans-serif" font-size="9.5" font-weight="normal" fill="#9a3412" text-anchor="start" opacity="1.0">Not the product display, but the only one you have</text>
+<text x="110.0" y="878.0" font-family="'DejaVu Sans', Helvetica, Arial, sans-serif" font-size="9.5" font-weight="normal" fill="#9a3412" text-anchor="start" opacity="1.0">until the e-paper works.</text>
+<rect x="548.0" y="725.0" width="62.0" height="24.0" rx="6" fill="#ffffff" stroke="#0f766e" stroke-width="1.6"/>
+<text x="579.0" y="741.5" font-family="ui-monospace, 'DejaVu Sans Mono', Menlo, Consolas, monospace" font-size="12.5" font-weight="bold" fill="#0f766e" text-anchor="middle" opacity="1.0">IO17</text>
+<line x1="396.0" y1="737.0" x2="548.0" y2="737.0" stroke="#0f766e" stroke-width="2.0" stroke-linecap="round"/>
+<rect x="548.0" y="771.0" width="62.0" height="24.0" rx="6" fill="#ffffff" stroke="#0f766e" stroke-width="1.6"/>
+<text x="579.0" y="787.5" font-family="ui-monospace, 'DejaVu Sans Mono', Menlo, Consolas, monospace" font-size="12.5" font-weight="bold" fill="#0f766e" text-anchor="middle" opacity="1.0">IO18</text>
+<line x1="396.0" y1="783.0" x2="548.0" y2="783.0" stroke="#0f766e" stroke-width="2.0" stroke-linecap="round"/>
+<rect x="548.0" y="817.0" width="62.0" height="24.0" rx="6" fill="#ffffff" stroke="#b45309" stroke-width="1.6"/>
+<text x="579.0" y="833.5" font-family="ui-monospace, 'DejaVu Sans Mono', Menlo, Consolas, monospace" font-size="12.5" font-weight="bold" fill="#b45309" text-anchor="middle" opacity="1.0">IO21</text>
+<line x1="396.0" y1="829.0" x2="548.0" y2="829.0" stroke="#b45309" stroke-width="2.0" stroke-linecap="round"/>
+<rect x="1120.0" y="264.0" width="300.0" height="344.0" rx="8" fill="#ffffff" stroke="#111827" stroke-width="1.6"/>
+<text x="1134.0" y="285.0" font-family="'DejaVu Sans', Helvetica, Arial, sans-serif" font-size="13.5" font-weight="bold" fill="#111827" text-anchor="start" opacity="1.0">Waveshare 7.5in e-Paper HAT</text>
+<text x="1134.0" y="301.0" font-family="'DejaVu Sans', Helvetica, Arial, sans-serif" font-size="10.5" font-weight="normal" fill="#6b7280" text-anchor="start" opacity="1.0">800x480 mono, UC8179, SPI3</text>
+<text x="1134.0" y="319.0" font-family="ui-monospace, 'DejaVu Sans Mono', Menlo, Consolas, monospace" font-size="12.5" font-weight="bold" fill="#0369a1" text-anchor="start" opacity="1.0">CS</text>
+<text x="1134.0" y="333.0" font-family="'DejaVu Sans', Helvetica, Arial, sans-serif" font-size="9.5" font-weight="normal" fill="#6b7280" text-anchor="start" opacity="1.0">chip select</text>
+<circle cx="1120.0" cy="321.0" r="3.4" fill="#0369a1"/>
+<text x="1134.0" y="365.0" font-family="ui-monospace, 'DejaVu Sans Mono', Menlo, Consolas, monospace" font-size="12.5" font-weight="bold" fill="#0369a1" text-anchor="start" opacity="1.0">SCK</text>
+<circle cx="1120.0" cy="367.0" r="3.4" fill="#0369a1"/>
+<text x="1134.0" y="411.0" font-family="ui-monospace, 'DejaVu Sans Mono', Menlo, Consolas, monospace" font-size="12.5" font-weight="bold" fill="#0369a1" text-anchor="start" opacity="1.0">DIN</text>
+<text x="1134.0" y="425.0" font-family="'DejaVu Sans', Helvetica, Arial, sans-serif" font-size="9.5" font-weight="normal" fill="#6b7280" text-anchor="start" opacity="1.0">MOSI; panel is write-only</text>
+<circle cx="1120.0" cy="413.0" r="3.4" fill="#0369a1"/>
+<text x="1134.0" y="457.0" font-family="ui-monospace, 'DejaVu Sans Mono', Menlo, Consolas, monospace" font-size="12.5" font-weight="bold" fill="#b45309" text-anchor="start" opacity="1.0">DC</text>
+<text x="1134.0" y="471.0" font-family="'DejaVu Sans', Helvetica, Arial, sans-serif" font-size="9.5" font-weight="normal" fill="#6b7280" text-anchor="start" opacity="1.0">low = command</text>
+<circle cx="1120.0" cy="459.0" r="3.4" fill="#b45309"/>
+<text x="1134.0" y="503.0" font-family="ui-monospace, 'DejaVu Sans Mono', Menlo, Consolas, monospace" font-size="12.5" font-weight="bold" fill="#b45309" text-anchor="start" opacity="1.0">RST</text>
+<text x="1134.0" y="517.0" font-family="'DejaVu Sans', Helvetica, Arial, sans-serif" font-size="9.5" font-weight="normal" fill="#6b7280" text-anchor="start" opacity="1.0">active low</text>
+<circle cx="1120.0" cy="505.0" r="3.4" fill="#b45309"/>
+<text x="1134.0" y="549.0" font-family="ui-monospace, 'DejaVu Sans Mono', Menlo, Consolas, monospace" font-size="12.5" font-weight="bold" fill="#b45309" text-anchor="start" opacity="1.0">BUSY</text>
+<text x="1134.0" y="563.0" font-family="'DejaVu Sans', Helvetica, Arial, sans-serif" font-size="9.5" font-weight="normal" fill="#6b7280" text-anchor="start" opacity="1.0">LOW while refreshing</text>
+<circle cx="1120.0" cy="551.0" r="3.4" fill="#b45309"/>
+<text x="1134.0" y="588.0" font-family="'DejaVu Sans', Helvetica, Arial, sans-serif" font-size="9.5" font-weight="normal" fill="#9a3412" text-anchor="start" opacity="1.0">No MISO: the panel never talks back. BUSY polarity</text>
+<text x="1134.0" y="600.0" font-family="'DejaVu Sans', Helvetica, Arial, sans-serif" font-size="9.5" font-weight="normal" fill="#9a3412" text-anchor="start" opacity="1.0">is inverted vs most e-paper.</text>
+<rect x="910.0" y="309.0" width="62.0" height="24.0" rx="6" fill="#ffffff" stroke="#0369a1" stroke-width="1.6"/>
+<text x="941.0" y="325.5" font-family="ui-monospace, 'DejaVu Sans Mono', Menlo, Consolas, monospace" font-size="12.5" font-weight="bold" fill="#0369a1" text-anchor="middle" opacity="1.0">IO7</text>
+<line x1="972.0" y1="321.0" x2="1120.0" y2="321.0" stroke="#0369a1" stroke-width="2.0" stroke-linecap="round"/>
+<rect x="910.0" y="355.0" width="62.0" height="24.0" rx="6" fill="#ffffff" stroke="#0369a1" stroke-width="1.6"/>
+<text x="941.0" y="371.5" font-family="ui-monospace, 'DejaVu Sans Mono', Menlo, Consolas, monospace" font-size="12.5" font-weight="bold" fill="#0369a1" text-anchor="middle" opacity="1.0">IO38</text>
+<line x1="972.0" y1="367.0" x2="1120.0" y2="367.0" stroke="#0369a1" stroke-width="2.0" stroke-linecap="round"/>
+<rect x="910.0" y="401.0" width="62.0" height="24.0" rx="6" fill="#ffffff" stroke="#0369a1" stroke-width="1.6"/>
+<text x="941.0" y="417.5" font-family="ui-monospace, 'DejaVu Sans Mono', Menlo, Consolas, monospace" font-size="12.5" font-weight="bold" fill="#0369a1" text-anchor="middle" opacity="1.0">IO2</text>
+<line x1="972.0" y1="413.0" x2="1120.0" y2="413.0" stroke="#0369a1" stroke-width="2.0" stroke-linecap="round"/>
+<rect x="910.0" y="447.0" width="62.0" height="24.0" rx="6" fill="#ffffff" stroke="#b45309" stroke-width="1.6"/>
+<text x="941.0" y="463.5" font-family="ui-monospace, 'DejaVu Sans Mono', Menlo, Consolas, monospace" font-size="12.5" font-weight="bold" fill="#b45309" text-anchor="middle" opacity="1.0">IO6</text>
+<line x1="972.0" y1="459.0" x2="1120.0" y2="459.0" stroke="#b45309" stroke-width="2.0" stroke-linecap="round"/>
+<rect x="910.0" y="493.0" width="62.0" height="24.0" rx="6" fill="#ffffff" stroke="#b45309" stroke-width="1.6"/>
+<text x="941.0" y="509.5" font-family="ui-monospace, 'DejaVu Sans Mono', Menlo, Consolas, monospace" font-size="12.5" font-weight="bold" fill="#b45309" text-anchor="middle" opacity="1.0">IO5</text>
+<line x1="972.0" y1="505.0" x2="1120.0" y2="505.0" stroke="#b45309" stroke-width="2.0" stroke-linecap="round"/>
+<rect x="910.0" y="539.0" width="62.0" height="24.0" rx="6" fill="#ffffff" stroke="#b45309" stroke-width="1.6"/>
+<text x="941.0" y="555.5" font-family="ui-monospace, 'DejaVu Sans Mono', Menlo, Consolas, monospace" font-size="12.5" font-weight="bold" fill="#b45309" text-anchor="middle" opacity="1.0">IO4</text>
+<line x1="972.0" y1="551.0" x2="1120.0" y2="551.0" stroke="#b45309" stroke-width="2.0" stroke-linecap="round"/>
+<rect x="1120.0" y="634.0" width="300.0" height="114.0" rx="8" fill="#ffffff" stroke="#111827" stroke-width="1.6"/>
+<text x="1134.0" y="655.0" font-family="'DejaVu Sans', Helvetica, Arial, sans-serif" font-size="13.5" font-weight="bold" fill="#111827" text-anchor="start" opacity="1.0">SFM-27-W buzzer</text>
+<text x="1134.0" y="671.0" font-family="'DejaVu Sans', Helvetica, Arial, sans-serif" font-size="10.5" font-weight="normal" fill="#6b7280" text-anchor="start" opacity="1.0">active buzzer, via MOSFET module #1</text>
+<text x="1134.0" y="689.0" font-family="ui-monospace, 'DejaVu Sans Mono', Menlo, Consolas, monospace" font-size="12.5" font-weight="bold" fill="#b45309" text-anchor="start" opacity="1.0">SIG</text>
+<text x="1134.0" y="703.0" font-family="'DejaVu Sans', Helvetica, Arial, sans-serif" font-size="9.5" font-weight="normal" fill="#6b7280" text-anchor="start" opacity="1.0">active high</text>
+<circle cx="1120.0" cy="691.0" r="3.4" fill="#b45309"/>
+<text x="1134.0" y="728.0" font-family="'DejaVu Sans', Helvetica, Arial, sans-serif" font-size="9.5" font-weight="normal" fill="#9a3412" text-anchor="start" opacity="1.0">Drive LOW at boot. An active buzzer makes its own</text>
+<text x="1134.0" y="740.0" font-family="'DejaVu Sans', Helvetica, Arial, sans-serif" font-size="9.5" font-weight="normal" fill="#9a3412" text-anchor="start" opacity="1.0">tone: no PWM needed.</text>
+<rect x="910.0" y="679.0" width="62.0" height="24.0" rx="6" fill="#ffffff" stroke="#b45309" stroke-width="1.6"/>
+<text x="941.0" y="695.5" font-family="ui-monospace, 'DejaVu Sans Mono', Menlo, Consolas, monospace" font-size="12.5" font-weight="bold" fill="#b45309" text-anchor="middle" opacity="1.0">IO15</text>
+<line x1="972.0" y1="691.0" x2="1120.0" y2="691.0" stroke="#b45309" stroke-width="2.0" stroke-linecap="round"/>
+<rect x="1120.0" y="774.0" width="300.0" height="102.0" rx="8" fill="#ffffff" stroke="#111827" stroke-width="1.6"/>
+<text x="1134.0" y="795.0" font-family="'DejaVu Sans', Helvetica, Arial, sans-serif" font-size="13.5" font-weight="bold" fill="#111827" text-anchor="start" opacity="1.0">Arcade button LED ring</text>
+<text x="1134.0" y="811.0" font-family="'DejaVu Sans', Helvetica, Arial, sans-serif" font-size="10.5" font-weight="normal" fill="#6b7280" text-anchor="start" opacity="1.0">via MOSFET module #2</text>
+<text x="1134.0" y="829.0" font-family="ui-monospace, 'DejaVu Sans Mono', Menlo, Consolas, monospace" font-size="12.5" font-weight="bold" fill="#b45309" text-anchor="start" opacity="1.0">SIG</text>
+<text x="1134.0" y="843.0" font-family="'DejaVu Sans', Helvetica, Arial, sans-serif" font-size="9.5" font-weight="normal" fill="#6b7280" text-anchor="start" opacity="1.0">active high</text>
+<circle cx="1120.0" cy="831.0" r="3.4" fill="#b45309"/>
+<text x="1134.0" y="868.0" font-family="'DejaVu Sans', Helvetica, Arial, sans-serif" font-size="9.5" font-weight="normal" fill="#9a3412" text-anchor="start" opacity="1.0">Drive LOW at boot.</text>
+<rect x="910.0" y="819.0" width="62.0" height="24.0" rx="6" fill="#ffffff" stroke="#b45309" stroke-width="1.6"/>
+<text x="941.0" y="835.5" font-family="ui-monospace, 'DejaVu Sans Mono', Menlo, Consolas, monospace" font-size="12.5" font-weight="bold" fill="#b45309" text-anchor="middle" opacity="1.0">IO16</text>
+<line x1="972.0" y1="831.0" x2="1120.0" y2="831.0" stroke="#b45309" stroke-width="2.0" stroke-linecap="round"/>
+<rect x="1120.0" y="902.0" width="300.0" height="126.0" rx="8" fill="#ffffff" stroke="#111827" stroke-width="1.6"/>
+<text x="1134.0" y="923.0" font-family="'DejaVu Sans', Helvetica, Arial, sans-serif" font-size="13.5" font-weight="bold" fill="#111827" text-anchor="start" opacity="1.0">Acknowledge button</text>
+<text x="1134.0" y="939.0" font-family="'DejaVu Sans', Helvetica, Arial, sans-serif" font-size="10.5" font-weight="normal" fill="#6b7280" text-anchor="start" opacity="1.0">momentary, to GND</text>
+<text x="1134.0" y="957.0" font-family="ui-monospace, 'DejaVu Sans Mono', Menlo, Consolas, monospace" font-size="12.5" font-weight="bold" fill="#b45309" text-anchor="start" opacity="1.0">SW</text>
+<text x="1134.0" y="971.0" font-family="'DejaVu Sans', Helvetica, Arial, sans-serif" font-size="9.5" font-weight="normal" fill="#6b7280" text-anchor="start" opacity="1.0">active low, pull-up</text>
+<circle cx="1120.0" cy="959.0" r="3.4" fill="#b45309"/>
+<text x="1134.0" y="996.0" font-family="'DejaVu Sans', Helvetica, Arial, sans-serif" font-size="9.5" font-weight="normal" fill="#9a3412" text-anchor="start" opacity="1.0">Not GPIO0: held through a reset, a strapping pin</text>
+<text x="1134.0" y="1008.0" font-family="'DejaVu Sans', Helvetica, Arial, sans-serif" font-size="9.5" font-weight="normal" fill="#9a3412" text-anchor="start" opacity="1.0">leaves the board in its bootloader — dark, silent,</text>
+<text x="1134.0" y="1020.0" font-family="'DejaVu Sans', Helvetica, Arial, sans-serif" font-size="9.5" font-weight="normal" fill="#9a3412" text-anchor="start" opacity="1.0">not alarming.</text>
+<rect x="910.0" y="947.0" width="62.0" height="24.0" rx="6" fill="#ffffff" stroke="#b45309" stroke-width="1.6"/>
+<text x="941.0" y="963.5" font-family="ui-monospace, 'DejaVu Sans Mono', Menlo, Consolas, monospace" font-size="12.5" font-weight="bold" fill="#b45309" text-anchor="middle" opacity="1.0">IO47</text>
+<line x1="972.0" y1="959.0" x2="1120.0" y2="959.0" stroke="#b45309" stroke-width="2.0" stroke-linecap="round"/>
+<text x="1490.0" y="132.0" font-family="'DejaVu Sans', Helvetica, Arial, sans-serif" font-size="14" font-weight="bold" fill="#111827" text-anchor="start" opacity="1.0">Nets</text>
+<line x1="1490.0" y1="150.0" x2="1516.0" y2="150.0" stroke="#7c3aed" stroke-width="3" stroke-linecap="round"/>
+<text x="1524.0" y="154.0" font-family="'DejaVu Sans', Helvetica, Arial, sans-serif" font-size="11" font-weight="normal" fill="#111827" text-anchor="start" opacity="1.0">SPI2 — radio (on-module)</text>
+<line x1="1490.0" y1="170.0" x2="1516.0" y2="170.0" stroke="#0369a1" stroke-width="3" stroke-linecap="round"/>
+<text x="1524.0" y="174.0" font-family="'DejaVu Sans', Helvetica, Arial, sans-serif" font-size="11" font-weight="normal" fill="#111827" text-anchor="start" opacity="1.0">SPI3 — e-paper</text>
+<line x1="1490.0" y1="190.0" x2="1516.0" y2="190.0" stroke="#0f766e" stroke-width="3" stroke-linecap="round"/>
+<text x="1524.0" y="194.0" font-family="'DejaVu Sans', Helvetica, Arial, sans-serif" font-size="11" font-weight="normal" fill="#111827" text-anchor="start" opacity="1.0">I2C — OLED (on-module)</text>
+<line x1="1490.0" y1="210.0" x2="1516.0" y2="210.0" stroke="#b45309" stroke-width="3" stroke-linecap="round"/>
+<text x="1524.0" y="214.0" font-family="'DejaVu Sans', Helvetica, Arial, sans-serif" font-size="11" font-weight="normal" fill="#111827" text-anchor="start" opacity="1.0">control / GPIO</text>
+<text x="1490.0" y="248.0" font-family="'DejaVu Sans', Helvetica, Arial, sans-serif" font-size="14" font-weight="bold" fill="#111827" text-anchor="start" opacity="1.0">Radio link</text>
+<text x="1490.0" y="268.0" font-family="'DejaVu Sans', Helvetica, Arial, sans-serif" font-size="11" font-weight="normal" fill="#6b7280" text-anchor="start" opacity="1.0">region</text>
+<text x="1852.0" y="268.0" font-family="ui-monospace, 'DejaVu Sans Mono', Menlo, Consolas, monospace" font-size="11" font-weight="bold" fill="#111827" text-anchor="end" opacity="1.0">US915 (902-928 MHz)</text>
+<text x="1490.0" y="286.0" font-family="'DejaVu Sans', Helvetica, Arial, sans-serif" font-size="11" font-weight="normal" fill="#6b7280" text-anchor="start" opacity="1.0">spreading factor</text>
+<text x="1852.0" y="286.0" font-family="ui-monospace, 'DejaVu Sans Mono', Menlo, Consolas, monospace" font-size="11" font-weight="bold" fill="#111827" text-anchor="end" opacity="1.0">SF9</text>
+<text x="1490.0" y="304.0" font-family="'DejaVu Sans', Helvetica, Arial, sans-serif" font-size="11" font-weight="normal" fill="#6b7280" text-anchor="start" opacity="1.0">bandwidth</text>
+<text x="1852.0" y="304.0" font-family="ui-monospace, 'DejaVu Sans Mono', Menlo, Consolas, monospace" font-size="11" font-weight="bold" fill="#111827" text-anchor="end" opacity="1.0">125 kHz</text>
+<text x="1490.0" y="322.0" font-family="'DejaVu Sans', Helvetica, Arial, sans-serif" font-size="11" font-weight="normal" fill="#6b7280" text-anchor="start" opacity="1.0">max frame</text>
+<text x="1852.0" y="322.0" font-family="ui-monospace, 'DejaVu Sans Mono', Menlo, Consolas, monospace" font-size="11" font-weight="bold" fill="#111827" text-anchor="end" opacity="1.0">48 bytes</text>
+<text x="1490.0" y="344.0" font-family="'DejaVu Sans', Helvetica, Arial, sans-serif" font-size="9.5" font-weight="normal" fill="#6b7280" text-anchor="start" opacity="1.0">Both ends must match exactly. A mismatch</text>
+<text x="1490.0" y="356.0" font-family="'DejaVu Sans', Helvetica, Arial, sans-serif" font-size="9.5" font-weight="normal" fill="#6b7280" text-anchor="start" opacity="1.0">is a silent link, not a weak one.</text>
+<text x="1490.0" y="380.0" font-family="'DejaVu Sans', Helvetica, Arial, sans-serif" font-size="14" font-weight="bold" fill="#111827" text-anchor="start" opacity="1.0">Pin map</text>
+<text x="1490.0" y="405.0" font-family="'DejaVu Sans', Helvetica, Arial, sans-serif" font-size="10.5" font-weight="normal" fill="#111827" text-anchor="start" opacity="1.0">SX1262 NSS</text>
+<text x="1852.0" y="405.0" font-family="ui-monospace, 'DejaVu Sans Mono', Menlo, Consolas, monospace" font-size="10.5" font-weight="bold" fill="#111827" text-anchor="end" opacity="1.0">GPIO8</text>
+<text x="1490.0" y="422.0" font-family="'DejaVu Sans', Helvetica, Arial, sans-serif" font-size="10.5" font-weight="normal" fill="#111827" text-anchor="start" opacity="1.0">SX1262 SCK</text>
+<text x="1852.0" y="422.0" font-family="ui-monospace, 'DejaVu Sans Mono', Menlo, Consolas, monospace" font-size="10.5" font-weight="bold" fill="#111827" text-anchor="end" opacity="1.0">GPIO9</text>
+<text x="1490.0" y="439.0" font-family="'DejaVu Sans', Helvetica, Arial, sans-serif" font-size="10.5" font-weight="normal" fill="#111827" text-anchor="start" opacity="1.0">SX1262 MOSI</text>
+<text x="1852.0" y="439.0" font-family="ui-monospace, 'DejaVu Sans Mono', Menlo, Consolas, monospace" font-size="10.5" font-weight="bold" fill="#111827" text-anchor="end" opacity="1.0">GPIO10</text>
+<text x="1490.0" y="456.0" font-family="'DejaVu Sans', Helvetica, Arial, sans-serif" font-size="10.5" font-weight="normal" fill="#111827" text-anchor="start" opacity="1.0">SX1262 MISO</text>
+<text x="1852.0" y="456.0" font-family="ui-monospace, 'DejaVu Sans Mono', Menlo, Consolas, monospace" font-size="10.5" font-weight="bold" fill="#111827" text-anchor="end" opacity="1.0">GPIO11</text>
+<text x="1490.0" y="473.0" font-family="'DejaVu Sans', Helvetica, Arial, sans-serif" font-size="10.5" font-weight="normal" fill="#111827" text-anchor="start" opacity="1.0">SX1262 RST</text>
+<text x="1852.0" y="473.0" font-family="ui-monospace, 'DejaVu Sans Mono', Menlo, Consolas, monospace" font-size="10.5" font-weight="bold" fill="#111827" text-anchor="end" opacity="1.0">GPIO12</text>
+<text x="1490.0" y="490.0" font-family="'DejaVu Sans', Helvetica, Arial, sans-serif" font-size="10.5" font-weight="normal" fill="#111827" text-anchor="start" opacity="1.0">SX1262 BUSY</text>
+<text x="1852.0" y="490.0" font-family="ui-monospace, 'DejaVu Sans Mono', Menlo, Consolas, monospace" font-size="10.5" font-weight="bold" fill="#111827" text-anchor="end" opacity="1.0">GPIO13</text>
+<text x="1490.0" y="507.0" font-family="'DejaVu Sans', Helvetica, Arial, sans-serif" font-size="10.5" font-weight="normal" fill="#111827" text-anchor="start" opacity="1.0">SX1262 DIO1</text>
+<text x="1852.0" y="507.0" font-family="ui-monospace, 'DejaVu Sans Mono', Menlo, Consolas, monospace" font-size="10.5" font-weight="bold" fill="#111827" text-anchor="end" opacity="1.0">GPIO14</text>
+<text x="1490.0" y="524.0" font-family="'DejaVu Sans', Helvetica, Arial, sans-serif" font-size="10.5" font-weight="normal" fill="#111827" text-anchor="start" opacity="1.0">OLED SDA</text>
+<text x="1852.0" y="524.0" font-family="ui-monospace, 'DejaVu Sans Mono', Menlo, Consolas, monospace" font-size="10.5" font-weight="bold" fill="#111827" text-anchor="end" opacity="1.0">GPIO17</text>
+<text x="1490.0" y="541.0" font-family="'DejaVu Sans', Helvetica, Arial, sans-serif" font-size="10.5" font-weight="normal" fill="#111827" text-anchor="start" opacity="1.0">OLED SCL</text>
+<text x="1852.0" y="541.0" font-family="ui-monospace, 'DejaVu Sans Mono', Menlo, Consolas, monospace" font-size="10.5" font-weight="bold" fill="#111827" text-anchor="end" opacity="1.0">GPIO18</text>
+<text x="1490.0" y="558.0" font-family="'DejaVu Sans', Helvetica, Arial, sans-serif" font-size="10.5" font-weight="normal" fill="#111827" text-anchor="start" opacity="1.0">OLED RST</text>
+<text x="1852.0" y="558.0" font-family="ui-monospace, 'DejaVu Sans Mono', Menlo, Consolas, monospace" font-size="10.5" font-weight="bold" fill="#111827" text-anchor="end" opacity="1.0">GPIO21</text>
+<text x="1490.0" y="575.0" font-family="'DejaVu Sans', Helvetica, Arial, sans-serif" font-size="10.5" font-weight="normal" fill="#111827" text-anchor="start" opacity="1.0">e-Paper CS</text>
+<text x="1852.0" y="575.0" font-family="ui-monospace, 'DejaVu Sans Mono', Menlo, Consolas, monospace" font-size="10.5" font-weight="bold" fill="#111827" text-anchor="end" opacity="1.0">GPIO7</text>
+<text x="1490.0" y="592.0" font-family="'DejaVu Sans', Helvetica, Arial, sans-serif" font-size="10.5" font-weight="normal" fill="#111827" text-anchor="start" opacity="1.0">e-Paper SCK</text>
+<text x="1852.0" y="592.0" font-family="ui-monospace, 'DejaVu Sans Mono', Menlo, Consolas, monospace" font-size="10.5" font-weight="bold" fill="#111827" text-anchor="end" opacity="1.0">GPIO38</text>
+<text x="1490.0" y="609.0" font-family="'DejaVu Sans', Helvetica, Arial, sans-serif" font-size="10.5" font-weight="normal" fill="#111827" text-anchor="start" opacity="1.0">e-Paper DIN</text>
+<text x="1852.0" y="609.0" font-family="ui-monospace, 'DejaVu Sans Mono', Menlo, Consolas, monospace" font-size="10.5" font-weight="bold" fill="#111827" text-anchor="end" opacity="1.0">GPIO2</text>
+<text x="1490.0" y="626.0" font-family="'DejaVu Sans', Helvetica, Arial, sans-serif" font-size="10.5" font-weight="normal" fill="#111827" text-anchor="start" opacity="1.0">e-Paper DC</text>
+<text x="1852.0" y="626.0" font-family="ui-monospace, 'DejaVu Sans Mono', Menlo, Consolas, monospace" font-size="10.5" font-weight="bold" fill="#111827" text-anchor="end" opacity="1.0">GPIO6</text>
+<text x="1490.0" y="643.0" font-family="'DejaVu Sans', Helvetica, Arial, sans-serif" font-size="10.5" font-weight="normal" fill="#111827" text-anchor="start" opacity="1.0">e-Paper RST</text>
+<text x="1852.0" y="643.0" font-family="ui-monospace, 'DejaVu Sans Mono', Menlo, Consolas, monospace" font-size="10.5" font-weight="bold" fill="#111827" text-anchor="end" opacity="1.0">GPIO5</text>
+<text x="1490.0" y="660.0" font-family="'DejaVu Sans', Helvetica, Arial, sans-serif" font-size="10.5" font-weight="normal" fill="#111827" text-anchor="start" opacity="1.0">e-Paper BUSY</text>
+<text x="1852.0" y="660.0" font-family="ui-monospace, 'DejaVu Sans Mono', Menlo, Consolas, monospace" font-size="10.5" font-weight="bold" fill="#111827" text-anchor="end" opacity="1.0">GPIO4</text>
+<text x="1490.0" y="677.0" font-family="'DejaVu Sans', Helvetica, Arial, sans-serif" font-size="10.5" font-weight="normal" fill="#111827" text-anchor="start" opacity="1.0">Buzzer SIG</text>
+<text x="1852.0" y="677.0" font-family="ui-monospace, 'DejaVu Sans Mono', Menlo, Consolas, monospace" font-size="10.5" font-weight="bold" fill="#111827" text-anchor="end" opacity="1.0">GPIO15</text>
+<text x="1490.0" y="694.0" font-family="'DejaVu Sans', Helvetica, Arial, sans-serif" font-size="10.5" font-weight="normal" fill="#111827" text-anchor="start" opacity="1.0">Button LED SIG</text>
+<text x="1852.0" y="694.0" font-family="ui-monospace, 'DejaVu Sans Mono', Menlo, Consolas, monospace" font-size="10.5" font-weight="bold" fill="#111827" text-anchor="end" opacity="1.0">GPIO16</text>
+<text x="1490.0" y="711.0" font-family="'DejaVu Sans', Helvetica, Arial, sans-serif" font-size="10.5" font-weight="normal" fill="#111827" text-anchor="start" opacity="1.0">Button SW</text>
+<text x="1852.0" y="711.0" font-family="ui-monospace, 'DejaVu Sans Mono', Menlo, Consolas, monospace" font-size="10.5" font-weight="bold" fill="#111827" text-anchor="end" opacity="1.0">GPIO47</text>
+<text x="1490.0" y="737.0" font-family="'DejaVu Sans', Helvetica, Arial, sans-serif" font-size="14" font-weight="bold" fill="#111827" text-anchor="start" opacity="1.0">Free / reserve</text>
+<text x="1490.0" y="755.0" font-family="ui-monospace, 'DejaVu Sans Mono', Menlo, Consolas, monospace" font-size="10" font-weight="normal" fill="#6b7280" text-anchor="start" opacity="1.0">IO0, IO3, IO33, IO34, IO39, IO40, IO41,</text>
+<text x="1490.0" y="769.0" font-family="ui-monospace, 'DejaVu Sans Mono', Menlo, Consolas, monospace" font-size="10" font-weight="normal" fill="#6b7280" text-anchor="start" opacity="1.0">IO42, IO45, IO46, IO48</text>
+<text x="1490.0" y="787.0" font-family="'DejaVu Sans', Helvetica, Arial, sans-serif" font-size="9.5" font-weight="normal" fill="#6b7280" text-anchor="start" opacity="1.0">GPIO22-25 do not exist on an S3;</text>
+<text x="1490.0" y="799.0" font-family="'DejaVu Sans', Helvetica, Arial, sans-serif" font-size="9.5" font-weight="normal" fill="#6b7280" text-anchor="start" opacity="1.0">26-32 are the SiP flash.</text>
+<line x1="48.0" y1="1110.0" x2="1852.0" y2="1110.0" stroke="#d1d5db" stroke-width="1.4" stroke-linecap="round"/>
+<text x="48.0" y="1132.0" font-family="'DejaVu Sans', Helvetica, Arial, sans-serif" font-size="14" font-weight="bold" fill="#111827" text-anchor="start" opacity="1.0">Power</text>
+<text x="48.0" y="1154.0" font-family="'DejaVu Sans', Helvetica, Arial, sans-serif" font-size="11" font-weight="normal" fill="#111827" text-anchor="start" opacity="1.0">USB-C 5 V (2 A) and a 3.7 V LiPo meet at a power-path / OR-ing stage. The e-Paper HAT and both MOSFET modules run from</text>
+<text x="48.0" y="1170.0" font-family="'DejaVu Sans', Helvetica, Arial, sans-serif" font-size="11" font-weight="normal" fill="#111827" text-anchor="start" opacity="1.0">5 V; the Heltec regulates its own 3.3 V. All grounds common. Do not power the board without the antenna attached.</text>
+<text x="48.0" y="1208.0" font-family="'DejaVu Sans', Helvetica, Arial, sans-serif" font-size="13" font-weight="bold" fill="#9a3412" text-anchor="start" opacity="1.0">Changed from the hand-drawn v1.0</text>
+<text x="48.0" y="1228.0" font-family="'DejaVu Sans', Helvetica, Arial, sans-serif" font-size="10.5" font-weight="normal" fill="#9a3412" text-anchor="start" opacity="1.0">v1.1 — e-Paper SCK/MOSI/MISO were on GPIO12/11/13 and DC/CS on GPIO17/18: the first three are the SX1262, the last two the</text>
+<text x="48.0" y="1243.0" font-family="'DejaVu Sans', Helvetica, Arial, sans-serif" font-size="10.5" font-weight="normal" fill="#9a3412" text-anchor="start" opacity="1.0">on-board OLED, so the bus moved to free pins. e-Paper MISO dropped, the panel is write-only. GPIO22/23 were listed as reserve;</text>
+<text x="48.0" y="1258.0" font-family="'DejaVu Sans', Helvetica, Arial, sans-serif" font-size="10.5" font-weight="normal" fill="#9a3412" text-anchor="start" opacity="1.0">neither exists on an ESP32-S3. v1.2 — the acknowledge button moved off GPIO0 and the e-Paper clock off GPIO3. Both are strapping</text>
+<text x="48.0" y="1273.0" font-family="'DejaVu Sans', Helvetica, Arial, sans-serif" font-size="10.5" font-weight="normal" fill="#9a3412" text-anchor="start" opacity="1.0">pins: held or pulled at reset they change how the chip boots, and a board stuck in its bootloader is dark, silent and not</text>
+<text x="48.0" y="1288.0" font-family="'DejaVu Sans', Helvetica, Arial, sans-serif" font-size="10.5" font-weight="normal" fill="#9a3412" text-anchor="start" opacity="1.0">alarming.</text>
+</svg>

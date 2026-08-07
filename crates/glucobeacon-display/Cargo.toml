@@ -1,0 +1,57 @@
+[package]
+name = "glucobeacon-display"
+description = "Display-side glucobeacon node: e-ink panel, buzzer, and silence button"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[dependencies]
+embedded-graphics = "0.8.2"
+glucobeacon-core = { workspace = true }
+glucobeacon-proto = { workspace = true }
+heapless = { version = "0.9.3", default-features = false }
+
+# The workstation simulator only.
+anyhow = { version = "1.0.104", optional = true }
+clap = { version = "4.6.6", features = ["derive", "env"], optional = true }
+tracing = { version = "0.1.44", optional = true }
+tracing-subscriber = { version = "0.3.23", features = [
+  "env-filter",
+], optional = true }
+embedded-hal = { version = "1.0", optional = true }
+
+[features]
+default = ["sim"]
+
+# Just the standard library. An ESP-IDF firmware build wants this and not
+# `sim`: it has `std`, but it has no use for an argument parser or a terminal
+# log subscriber.
+std = ["glucobeacon-core/std", "glucobeacon-proto/std"]
+
+# GPIO-backed buzzer, LED, and button drivers, generic over `embedded-hal`.
+# The firmware needs these; the simulator does not.
+embedded = ["dep:embedded-hal"]
+
+# The workstation simulator: writes the panel to an image file, logs the buzzer
+# and LED, and reads the button from stdin. Implies `std` and pulls in the
+# command-line machinery that goes with a hosted binary.
+sim = [
+  "std",
+  "embedded",
+  "dep:anyhow",
+  "dep:clap",
+  "dep:tracing",
+  "dep:tracing-subscriber",
+  "glucobeacon-proto/udp-link",
+]
+
+# The binary is the simulator.
+[[bin]]
+name = "glucobeacon-display"
+required-features = ["sim"]
+
+[lints]
+workspace = true

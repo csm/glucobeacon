@@ -1,0 +1,37 @@
+[package]
+name = "glucobeacon-dexcom"
+description = "Dexcom Share API client for the glucobeacon gateway"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[dependencies]
+glucobeacon-core = { workspace = true, features = ["serde"] }
+reqwest = { version = "0.13.4", default-features = false, features = [
+  "json",
+  "rustls",
+  "charset",
+  "http2",
+  "query",
+  "system-proxy",
+], optional = true }
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.151"
+thiserror = "2.0.19"
+tracing = "0.1.44"
+
+[dev-dependencies]
+tokio = { version = "1.53.1", features = ["macros", "rt"] }
+
+[features]
+default = ["reqwest-transport"]
+# The `reqwest`-backed transport. Turn this off for an ESP-IDF build and
+# implement `HttpTransport` over `esp_idf_svc`'s client instead, so the device
+# is not carrying two TLS stacks.
+reqwest-transport = ["dep:reqwest"]
+
+[lints]
+workspace = true

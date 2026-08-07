@@ -1,0 +1,23 @@
+[package]
+name = "glucobeacon-core"
+description = "Shared domain types and alarm logic for glucobeacon (no_std)"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[dependencies]
+heapless = { version = "0.9.3", default-features = false }
+serde = { version = "1.0.229", default-features = false, features = [
+  "derive",
+], optional = true }
+
+[features]
+default = ["std"]
+std = ["serde?/std"]
+serde = ["dep:serde", "heapless/serde"]
+
+[lints]
+workspace = true

@@ -1,0 +1,4 @@
+# The ESP32-S3 is Xtensa, which stock rustup cannot target. Install with:
+#   cargo install espup --locked && espup install --targets esp32s3
+[toolchain]
+channel = "esp"

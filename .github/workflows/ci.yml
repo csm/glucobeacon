@@ -1,0 +1,118 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+env:
+  CARGO_TERM_COLOR: always
+  RUSTFLAGS: -D warnings
+
+jobs:
+  test:
+    name: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Format
+        run: cargo fmt --all --check
+
+      - name: Clippy
+        run: cargo clippy --workspace --all-targets --all-features
+
+      - name: Test
+        run: cargo test --workspace --all-features
+
+      - name: Docs
+        run: cargo doc --workspace --no-deps --all-features
+        env:
+          RUSTDOCFLAGS: -D warnings
+
+      # The wiring diagram is generated from the firmware's pin map. If they
+      # drift apart, the diagram is a lie — which is how v1.0 ended up with the
+      # e-paper bus on top of the radio. Only the SVG and text are checked; the
+      # PDF and PNG are rendered from the SVG and need a browser.
+      - name: Wiring diagram matches the firmware
+        run: |
+          python3 tools/wiring/generate.py
+          # `git status --porcelain` rather than `git diff`, so a newly added
+          # output file counts too — `git diff` is blind to untracked files.
+          changed=$(git status --porcelain -- docs/wiring/)
+          if [ -n "$changed" ]; then
+            echo "The wiring diagram is out of date with board.rs:"
+            echo "$changed"
+            echo "Run ./tools/wiring/render.sh and commit the result."
+            exit 1
+          fi
+
+  embedded:
+    name: no_std cross-build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: riscv32imc-unknown-none-elf
+      - uses: Swatinem/rust-cache@v2
+
+      # Everything that will run on the ESP32 gets built for a target with no
+      # std, which is the only way to keep it true.
+      #
+      # This is the RISC-V check; the `xtensa` job below builds the same crates
+      # for the real target. Both are worth having. This one runs on a stock
+      # toolchain with no unstable flags, so it cannot break the way that one
+      # can, and riscv32imc is the stricter check on portability: it has no
+      # atomic compare-and-swap, so anything that quietly depends on one fails
+      # here rather than on the bench.
+      - name: Build the device crates without std
+        run: |
+          cargo build \
+            -p glucobeacon-core -p glucobeacon-proto -p glucobeacon-display \
+            --no-default-features --target riscv32imc-unknown-none-elf
+
+      # The gateway's Dexcom client must not require reqwest: an ESP-IDF build
+      # uses the HTTP client ESP-IDF already links, rather than a second TLS
+      # stack.
+      - name: Build the Dexcom client without reqwest
+        run: cargo build -p glucobeacon-dexcom --no-default-features
+
+  xtensa:
+    name: ESP32-S3 cross-build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # The ESP32-S3 is Xtensa, which stock rustup cannot install.
+      # Pinned for reproducibility rather than to work around anything.
+      - uses: esp-rs/xtensa-toolchain@v1.5
+        with:
+          version: 1.97.0.0
+          default: true
+          buildtargets: esp32s3
+          ldproxy: false
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Report the toolchain in use
+        run: cargo +esp --version && rustc +esp --version --verbose
+
+      # The actual shipping target, not a proxy for it.
+      #
+      # `+esp` is load-bearing. The action's `default: true` sets the rustup
+      # default, but this repo has a rust-toolchain.toml pinning `stable` —
+      # and that file wins over the default. Without `+esp` a bare `cargo`
+      # resolves to stable, which cannot target Xtensa and rejects `-Z` with
+      # "the `-Z` flag is only accepted on the nightly channel of Cargo".
+      #
+      # `-Z build-std=core` is also required, not optional: the esp toolchain
+      # ships no precompiled `core` for a bare-metal Xtensa target, so it has
+      # to be built from source.
+      - name: Build the device crates for xtensa-esp32s3-none-elf
+        run: |
+          cargo +esp build -Z build-std=core \
+            -p glucobeacon-core -p glucobeacon-proto -p glucobeacon-display \
+            --no-default-features --target xtensa-esp32s3-none-elf

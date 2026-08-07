@@ -1,0 +1,74 @@
+# glucobeacon gateway configuration.
+#
+# Every value below is a default — an empty file is a valid config. Copy this to
+# glucobeacon.toml and change what you need.
+#
+# Unknown keys are rejected rather than ignored, so a typo is an error at
+# startup instead of a setting that silently never took effect.
+
+[dexcom]
+# The Dexcom Share *follower* account name — the one a follower logs in with,
+# not the account on the phone doing the uploading. May also be supplied as
+# GLUCOBEACON_DEXCOM_ACCOUNT, which takes precedence.
+# account = "you@example.com"
+
+# Which Share deployment the account lives on: "us", "ous", or "jp". Accounts
+# are not portable between them, and using the wrong one looks exactly like a
+# wrong password.
+region = "us"
+
+# The password is NOT a config field. Set GLUCOBEACON_DEXCOM_PASSWORD instead —
+# config files get committed, pasted into issues, and copied between machines.
+
+[link]
+# Development link addresses. On real hardware the radio replaces these.
+listen = "127.0.0.1:9101"
+peer = "127.0.0.1:9102"
+
+[poll]
+# How often the sensor produces a reading. Five minutes for every Dexcom sensor
+# currently shipping.
+sensor_interval_secs = 300
+
+# How long after a reading is due to wait before asking, so the uploading phone
+# has time to get it to Dexcom.
+settle_secs = 20
+
+# A floor on the gap between polls, so a misconfiguration cannot turn into a hot
+# loop against Dexcom.
+min_interval_secs = 30
+
+# Exponential backoff after a failed poll: first retry after this long, doubling
+# up to the ceiling.
+retry_base_secs = 30
+retry_max_secs = 300
+
+# How often to send a status heartbeat even when nothing changed, so the display
+# can tell a quiet sensor from a dead gateway.
+heartbeat_secs = 600
+
+[alarms]
+# Thresholds in mg/dL. Must be strictly increasing; the gateway refuses to start
+# otherwise. These are pushed to the display node, which is what actually
+# alarms — so they are configured here and only here.
+urgent_low_mgdl = 55
+low_mgdl = 70
+high_mgdl = 180
+urgent_high_mgdl = 250
+
+# How far back past a threshold a reading must come before the alarm clears.
+# Without this, a value parked on the threshold flips the buzzer on and off
+# every five minutes.
+hysteresis_mgdl = 5
+
+# Minutes without a fresh reading before the display raises "no data". This is
+# also what makes a dead gateway audible.
+stale_after_mins = 20
+
+# Minutes the silence button quiets an alarm for. Escalation to a more severe
+# alarm cancels the silence.
+silence_for_mins = 30
+
+# Minutes between re-announcements of an alarm that is still active and not
+# silenced.
+reannounce_after_mins = 5

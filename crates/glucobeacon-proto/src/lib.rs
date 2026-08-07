@@ -14,10 +14,12 @@
 pub mod frame;
 pub mod link;
 pub mod message;
+pub mod radio;
 
 pub use frame::{FrameError, MAX_FRAME_LEN, MAX_PAYLOAD_LEN, PROTOCOL_VERSION, decode, encode};
 pub use link::{Link, LinkError};
 pub use message::{Message, Packet, ReadingReport, Status, UplinkState};
+pub use radio::{Bandwidth, CodingRate, RadioConfig, Region, SpreadingFactor};
 
 #[cfg(feature = "udp-link")]
 pub mod udp;

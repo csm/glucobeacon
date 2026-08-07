@@ -1,6 +1,9 @@
 [workspace]
 resolver = "3"
 members = ["crates/*"]
+# The firmware needs the Xtensa toolchain and a device target, so it is its own
+# workspace: building from the root must not require espup.
+exclude = ["firmware"]
 
 [workspace.package]
 version = "0.1.0"

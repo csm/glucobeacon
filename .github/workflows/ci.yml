@@ -63,3 +63,23 @@ jobs:
       # stack.
       - name: Build the Dexcom client without reqwest
         run: cargo build -p glucobeacon-dexcom --no-default-features
+
+  xtensa:
+    name: ESP32-S3 cross-build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # The ESP32-S3 is Xtensa, which stock rustup cannot install.
+      - uses: esp-rs/xtensa-toolchain@v1.5
+        with:
+          default: true
+          buildtargets: esp32s3
+          ldproxy: false
+      - uses: Swatinem/rust-cache@v2
+
+      # The actual shipping target, not a proxy for it.
+      - name: Build the device crates for xtensa-esp32s3-none-elf
+        run: |
+          cargo build -Z build-std=core \
+            -p glucobeacon-core -p glucobeacon-proto -p glucobeacon-display \
+            --no-default-features --target xtensa-esp32s3-none-elf

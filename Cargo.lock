@@ -338,6 +338,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "embedded-hal"
+version = "1.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "361a90feb7004eca4019fb28352a9465666b24f840f5c3cddf0ff13920590b89"
+
+[[package]]
 name = "embedded-io"
 version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -504,6 +510,7 @@ dependencies = [
  "anyhow",
  "clap",
  "embedded-graphics",
+ "embedded-hal",
  "glucobeacon-core",
  "glucobeacon-proto",
  "heapless",

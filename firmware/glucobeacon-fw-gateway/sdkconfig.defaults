@@ -1,0 +1,12 @@
+# Needed by esp-idf-svc's threading support.
+CONFIG_PTHREAD_TASK_STACK_SIZE_DEFAULT=8192
+
+# The main task does TLS, which is stack-hungry.
+CONFIG_ESP_MAIN_TASK_STACK_SIZE=16384
+
+# Certificate bundle for TLS to Dexcom, without shipping our own roots.
+CONFIG_MBEDTLS_CERTIFICATE_BUNDLE=y
+CONFIG_MBEDTLS_CERTIFICATE_BUNDLE_DEFAULT_FULL=y
+
+# The module has 8MB of SiP flash.
+CONFIG_ESPTOOLPY_FLASHSIZE_8MB=y

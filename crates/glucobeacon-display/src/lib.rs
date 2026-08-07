@@ -12,22 +12,30 @@
 //! log, and the button is the Enter key.
 //!
 //! Everything except [`sim`] is `no_std` and allocation-free, so it runs on the
-//! ESP32 unchanged. Build with `default-features = false` for the device.
+//! ESP32-S3 unchanged. Build with `default-features = false` for a bare-metal
+//! (`esp-hal`) firmware, or with `--features std` for an ESP-IDF one — `std`
+//! deliberately does not pull in the simulator's command-line machinery.
 
 #![cfg_attr(not(feature = "std"), no_std)]
 
 pub mod app;
+
+#[cfg(feature = "embedded")]
+pub mod embedded;
+
 pub mod framebuffer;
 pub mod glyphs;
 pub mod hal;
+pub mod pattern;
 pub mod state;
 pub mod ui;
 
-#[cfg(feature = "std")]
+#[cfg(feature = "sim")]
 pub mod sim;
 
 pub use app::{DisplayApp, Tick};
 pub use framebuffer::{FrameBuffer, bytes_for};
+pub use pattern::{Player, Timeline};
 pub use state::{Applied, DisplayState};
 pub use ui::{Frame, PANEL_HEIGHT, PANEL_WIDTH};
 

@@ -78,28 +78,32 @@ See [glucobeacon.example.toml](glucobeacon.example.toml) for the settings.
 
 ## Target hardware
 
-An ESP32 dev board with an on-board LoRa module at each end. The gateway wants
-`std` via `esp-idf-svc`, because it needs WiFi and TLS and ESP-IDF already has
-both. The display node wants `no_std` via `esp-hal`, because it needs SPI, GPIO,
-and a timer — and all of its logic already cross-compiles for bare metal.
+Heltec WiFi LoRa 32 V3 at each end: an ESP32-S3FN8 with an SX1262 radio, 8 MB of
+flash, and 512 KB of SRAM.
 
-Which toolchain depends on the variant, and it is worth pinning down early:
-ESP32/S2/S3 are Xtensa and need `espup`, an esp-rs fork of rustc that stock
-rustup cannot install; ESP32-C3/C6/H2 are RISC-V and build on stock stable Rust.
+The ESP32-S3 is Xtensa, so it needs `espup` — an esp-rs fork of rustc that stock
+rustup cannot install. The gateway builds against `esp-idf-svc` for `std`,
+because it needs WiFi and TLS and ESP-IDF has both. The display node builds
+against `esp-hal` for `no_std`, and all of its logic already compiles for
+`xtensa-esp32s3-none-elf` today.
 
-The panel framebuffer is the one allocation big enough to matter on a chip with
-~320 KB of DRAM: 48 KB packed at one bit per pixel, versus 384 KB at one byte.
-Hence `framebuffer::FrameBuffer`. See
-[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the toolchain table, the memory
-budget, and what each hardware trait needs.
+Firmware lives in [`firmware/`](firmware/), outside the workspace, so building
+from the root does not require the Xtensa toolchain.
+
+See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the memory budget, the
+radio parameters, and what each hardware trait needs.
 
 ## Status
 
-The domain logic, wire protocol, Dexcom client, and both node applications are
-written and tested. What is not here yet is the hardware. The display node runs
-as a workstation simulator, with the panel, buzzer, LED, and button behind the
-traits in `glucobeacon-display::hal`, and the radio behind `Link`. Bringing up
-hardware means implementing those traits — nothing above them changes.
+The domain logic, wire protocol, Dexcom client, radio parameters, and both node
+applications are written and tested, and everything destined for the device
+compiles for the ESP32-S3.
+
+The firmware crates are written but **not yet compiled** — see
+[firmware/README.md](firmware/README.md) for exactly what that means. The
+display node also runs as a workstation simulator, with the panel, buzzer, LED,
+and button behind the traits in `glucobeacon-display::hal` and the radio behind
+`Link`.
 
 ## Development
 
@@ -107,9 +111,10 @@ hardware means implementing those traits — nothing above them changes.
 cargo test --workspace --all-features
 cargo clippy --workspace --all-targets --all-features
 
-# Everything that will run on the device, without std.
-cargo build -p glucobeacon-core -p glucobeacon-proto -p glucobeacon-display \
-  --no-default-features --target riscv32imc-unknown-none-elf
+# Everything that will run on the device, for the real target.
+cargo +esp build -Z build-std=core \
+  -p glucobeacon-core -p glucobeacon-proto -p glucobeacon-display \
+  --no-default-features --target xtensa-esp32s3-none-elf
 
 # The Dexcom client without reqwest, as an ESP-IDF build would use it.
 cargo build -p glucobeacon-dexcom --no-default-features

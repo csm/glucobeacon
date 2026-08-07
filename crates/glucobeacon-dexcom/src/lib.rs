@@ -11,9 +11,18 @@
 
 pub mod client;
 pub mod error;
+pub mod http;
 pub mod model;
+pub mod protocol;
 pub mod region;
+
+#[cfg(feature = "reqwest-transport")]
+pub mod reqwest_transport;
 
 pub use client::{Credentials, DEFAULT_LOOKBACK, DEFAULT_MAX_COUNT, ShareClient};
 pub use error::{Error, ErrorKind, Result};
+pub use http::{HttpResponse, HttpTransport, ShareRequest};
 pub use region::Region;
+
+#[cfg(feature = "reqwest-transport")]
+pub use reqwest_transport::ReqwestTransport;

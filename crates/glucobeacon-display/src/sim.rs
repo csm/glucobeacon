@@ -4,6 +4,7 @@
 //! the button becomes a keypress. Everything above this file is the same code
 //! that will run on the device.
 
+use core::fmt;
 use std::fs::File;
 use std::io::{self, BufRead, BufWriter, Write};
 use std::path::{Path, PathBuf};
@@ -14,41 +15,40 @@ use embedded_graphics::pixelcolor::BinaryColor;
 use embedded_graphics::prelude::*;
 use tracing::info;
 
+use crate::framebuffer::FrameBuffer;
 use crate::hal::{Button, Buzzer, BuzzerPattern, Indicator, LedState, Panel};
 
 /// A framebuffer that writes itself out as a netpbm bitmap on flush.
 ///
-/// One bit per pixel, matching the real panel, so what shows up in the file is
-/// exactly what would show up on the e-ink.
-pub struct SimPanel {
-    width: u32,
-    height: u32,
-    pixels: Vec<bool>,
+/// Wraps the same packed [`FrameBuffer`] the device uses, so what lands in the
+/// file is bit-for-bit what would be clocked into the panel controller — and
+/// the sim cannot accidentally have more room to draw in than the hardware.
+pub struct SimPanel<const BYTES: usize> {
+    buffer: FrameBuffer<BYTES>,
     path: PathBuf,
     flushes: u32,
 }
 
-impl std::fmt::Debug for SimPanel {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl<const BYTES: usize> fmt::Debug for SimPanel<BYTES> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("SimPanel")
-            .field("width", &self.width)
-            .field("height", &self.height)
+            .field("width", &self.buffer.width())
+            .field("height", &self.buffer.height())
             .field("path", &self.path)
             .field("flushes", &self.flushes)
             .finish_non_exhaustive()
     }
 }
 
-impl SimPanel {
-    /// A blank panel that writes to `path`.
-    pub fn new(width: u32, height: u32, path: impl Into<PathBuf>) -> Self {
-        Self {
-            width,
-            height,
-            pixels: vec![false; (width * height) as usize],
+impl<const BYTES: usize> SimPanel<BYTES> {
+    /// A blank panel that writes to `path`, or `None` if `BYTES` is too small
+    /// for the requested size.
+    pub fn new(width: u32, height: u32, path: impl Into<PathBuf>) -> Option<Self> {
+        Some(Self {
+            buffer: FrameBuffer::new(width, height)?,
             path: path.into(),
             flushes: 0,
-        }
+        })
     }
 
     /// How many times the panel has been refreshed.
@@ -60,42 +60,32 @@ impl SimPanel {
     }
 
     /// How many pixels are inked.
-    pub fn ink(&self) -> usize {
-        self.pixels.iter().filter(|on| **on).count()
+    pub fn ink(&self) -> u32 {
+        self.buffer.ink()
     }
 
     /// Writes the framebuffer as a binary PBM (netpbm P4).
     ///
-    /// PBM because it is eight lines of code and every image viewer reads it;
-    /// a PNG encoder would be a dependency earning nothing here.
+    /// The packed framebuffer layout *is* the P4 payload — MSB-first, rows
+    /// padded to whole bytes — so this is a header and a memcpy. PBM because
+    /// every image viewer reads it and a PNG encoder would be a dependency
+    /// earning nothing here.
     pub fn write_pbm(&self, path: &Path) -> io::Result<()> {
         let mut out = BufWriter::new(File::create(path)?);
         writeln!(out, "P4")?;
-        writeln!(out, "{} {}", self.width, self.height)?;
-
-        let stride = self.width.div_ceil(8);
-        let mut row = vec![0u8; stride as usize];
-        for y in 0..self.height {
-            row.fill(0);
-            for x in 0..self.width {
-                if self.pixels[(y * self.width + x) as usize] {
-                    // In PBM a set bit is black, which is also what ink is.
-                    row[(x / 8) as usize] |= 0x80 >> (x % 8);
-                }
-            }
-            out.write_all(&row)?;
-        }
+        writeln!(out, "{} {}", self.buffer.width(), self.buffer.height())?;
+        out.write_all(self.buffer.as_bytes())?;
         out.flush()
     }
 }
 
-impl OriginDimensions for SimPanel {
+impl<const BYTES: usize> OriginDimensions for SimPanel<BYTES> {
     fn size(&self) -> Size {
-        Size::new(self.width, self.height)
+        self.buffer.size()
     }
 }
 
-impl DrawTarget for SimPanel {
+impl<const BYTES: usize> DrawTarget for SimPanel<BYTES> {
     type Color = BinaryColor;
     type Error = io::Error;
 
@@ -103,22 +93,17 @@ impl DrawTarget for SimPanel {
     where
         I: IntoIterator<Item = Pixel<Self::Color>>,
     {
-        for Pixel(point, color) in pixels {
-            // Clipping rather than erroring: a layout that runs a pixel off the
-            // edge should look wrong, not take the node down.
-            if point.x < 0 || point.y < 0 {
-                continue;
-            }
-            let (x, y) = (point.x as u32, point.y as u32);
-            if x < self.width && y < self.height {
-                self.pixels[(y * self.width + x) as usize] = color.is_on();
-            }
-        }
+        let Ok(()) = self.buffer.draw_iter(pixels);
+        Ok(())
+    }
+
+    fn clear(&mut self, color: Self::Color) -> Result<(), Self::Error> {
+        self.buffer.fill(color.is_on());
         Ok(())
     }
 }
 
-impl Panel for SimPanel {
+impl<const BYTES: usize> Panel for SimPanel<BYTES> {
     type Error = io::Error;
 
     fn flush(&mut self) -> Result<(), Self::Error> {
@@ -241,7 +226,15 @@ impl Button for StdinButton {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::framebuffer::bytes_for;
     use embedded_graphics::primitives::{Primitive, PrimitiveStyle, Rectangle};
+
+    /// A test panel of the given size, with the byte count worked out for it.
+    macro_rules! panel {
+        ($w:expr, $h:expr, $path:expr) => {
+            SimPanel::<{ bytes_for($w, $h) }>::new($w, $h, $path).expect("fits")
+        };
+    }
 
     fn temp_path(name: &str) -> PathBuf {
         let mut path = std::env::temp_dir();
@@ -251,14 +244,14 @@ mod tests {
 
     #[test]
     fn a_new_panel_is_blank() {
-        let panel = SimPanel::new(64, 32, temp_path("blank"));
+        let panel = panel!(64, 32, temp_path("blank"));
         assert_eq!(panel.ink(), 0);
         assert_eq!(panel.size(), Size::new(64, 32));
     }
 
     #[test]
     fn drawing_inks_pixels() {
-        let mut panel = SimPanel::new(64, 32, temp_path("draw"));
+        let mut panel = panel!(64, 32, temp_path("draw"));
         Rectangle::new(Point::new(4, 4), Size::new(10, 10))
             .into_styled(PrimitiveStyle::with_fill(BinaryColor::On))
             .draw(&mut panel)
@@ -268,7 +261,7 @@ mod tests {
 
     #[test]
     fn drawing_off_the_edge_clips_instead_of_failing() {
-        let mut panel = SimPanel::new(64, 32, temp_path("clip"));
+        let mut panel = panel!(64, 32, temp_path("clip"));
         Rectangle::new(Point::new(-20, -20), Size::new(200, 200))
             .into_styled(PrimitiveStyle::with_fill(BinaryColor::On))
             .draw(&mut panel)
@@ -278,7 +271,7 @@ mod tests {
 
     #[test]
     fn clearing_erases() {
-        let mut panel = SimPanel::new(64, 32, temp_path("clear"));
+        let mut panel = panel!(64, 32, temp_path("clear"));
         panel.clear(BinaryColor::On).expect("fill");
         assert_eq!(panel.ink(), 64 * 32);
         panel.clear(BinaryColor::Off).expect("clear");
@@ -288,7 +281,7 @@ mod tests {
     #[test]
     fn a_flushed_panel_is_a_readable_pbm() {
         let path = temp_path("pbm");
-        let mut panel = SimPanel::new(16, 4, &path);
+        let mut panel = panel!(16, 4, &path);
         Rectangle::new(Point::zero(), Size::new(8, 4))
             .into_styled(PrimitiveStyle::with_fill(BinaryColor::On))
             .draw(&mut panel)
@@ -311,7 +304,7 @@ mod tests {
     #[test]
     fn flushes_are_counted() {
         let path = temp_path("count");
-        let mut panel = SimPanel::new(8, 8, &path);
+        let mut panel = panel!(8, 8, &path);
         assert_eq!(panel.flushes(), 0);
         panel.flush().expect("flush");
         panel.flush().expect("flush");
@@ -322,7 +315,7 @@ mod tests {
     #[test]
     fn a_width_that_is_not_a_multiple_of_eight_still_writes_whole_bytes() {
         let path = temp_path("odd");
-        let mut panel = SimPanel::new(12, 2, &path);
+        let mut panel = panel!(12, 2, &path);
         panel.clear(BinaryColor::On).expect("fill");
         panel.flush().expect("flush");
 

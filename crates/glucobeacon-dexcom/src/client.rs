@@ -1,25 +1,15 @@
-//! The Share client itself.
+//! Session management on top of [`crate::protocol`].
 
 use std::fmt;
 use std::time::Duration;
 
 use glucobeacon_core::Reading;
-use serde::Serialize;
-use tracing::{debug, warn};
+use tracing::debug;
 
 use crate::error::{Error, Result};
-use crate::model::{ShareFault, ShareGlucoseEntry};
+use crate::http::HttpTransport;
+use crate::protocol;
 use crate::region::Region;
-
-/// The application ID the Dexcom mobile app presents. Share requires it.
-const APPLICATION_ID: &str = "d89443d2-327c-4a6f-89e5-496bbb0317db";
-
-/// Session ID Share returns to mean "login failed" instead of erroring.
-const NULL_SESSION: &str = "00000000-0000-0000-0000-000000000000";
-
-const AUTHENTICATE_PATH: &str = "/ShareWebServices/Services/General/AuthenticatePublisherAccount";
-const LOGIN_PATH: &str = "/ShareWebServices/Services/General/LoginPublisherAccountById";
-const GLUCOSE_PATH: &str = "/ShareWebServices/Services/Publisher/ReadPublisherLatestGlucoseValues";
 
 /// How far back to ask for readings by default.
 ///
@@ -62,57 +52,24 @@ impl fmt::Debug for Credentials {
     }
 }
 
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
-struct AuthenticateRequest<'a> {
-    account_name: &'a str,
-    password: &'a str,
-    application_id: &'a str,
-}
-
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
-struct LoginRequest<'a> {
-    account_id: &'a str,
-    password: &'a str,
-    application_id: &'a str,
-}
-
 /// A client for one Share account.
 ///
 /// Holds a session ID and renews it transparently: Share sessions expire after
 /// a few hours, and every caller having to handle that would be a mistake
 /// waiting to happen.
 #[derive(Debug)]
-pub struct ShareClient {
-    http: reqwest::Client,
+pub struct ShareClient<T> {
+    transport: T,
     region: Region,
     credentials: Credentials,
     session_id: Option<String>,
 }
 
-impl ShareClient {
-    /// Builds a client with a sensible HTTP configuration.
-    pub fn new(credentials: Credentials, region: Region) -> Result<Self> {
-        let http = reqwest::Client::builder()
-            .timeout(Duration::from_secs(30))
-            .connect_timeout(Duration::from_secs(10))
-            .user_agent(concat!("glucobeacon/", env!("CARGO_PKG_VERSION")))
-            .build()?;
-        Ok(Self::with_http_client(http, credentials, region))
-    }
-
-    /// Builds a client over a caller-supplied HTTP client.
-    ///
-    /// Useful for pointing tests at a local server, and for reusing a connection
-    /// pool on a device where TLS handshakes are expensive.
-    pub fn with_http_client(
-        http: reqwest::Client,
-        credentials: Credentials,
-        region: Region,
-    ) -> Self {
+impl<T: HttpTransport> ShareClient<T> {
+    /// Builds a client over `transport`.
+    pub fn with_transport(transport: T, credentials: Credentials, region: Region) -> Self {
         Self {
-            http,
+            transport,
             region,
             credentials,
             session_id: None,
@@ -145,82 +102,29 @@ impl ShareClient {
 
     /// Readings from the last `lookback`, oldest first, at most `max_count`.
     ///
-    /// Share returns newest first; this reverses them so callers can feed them
-    /// straight into a [`History`](glucobeacon_core::History), which wants
-    /// increasing timestamps. Entries with unparseable timestamps are dropped
-    /// with a warning rather than failing the whole poll.
+    /// Logs in if there is no session, and retries once if the session turns
+    /// out to have expired.
     pub async fn readings(&mut self, lookback: Duration, max_count: u16) -> Result<Vec<Reading>> {
-        let entries = self.fetch_entries(lookback, max_count).await?;
-        let total = entries.len();
-
-        let mut readings: Vec<Reading> = entries
-            .iter()
-            .filter_map(|entry| {
-                let reading = entry.to_reading();
-                if reading.is_none() {
-                    warn!(wall_time = %entry.wall_time, "dropping Share entry with an unparseable timestamp");
-                }
-                reading
-            })
-            .collect();
-
-        if readings.is_empty() && total > 0 {
-            return Err(Error::Protocol(format!(
-                "Share returned {total} entries, none of which had a usable timestamp"
-            )));
-        }
-
-        readings.sort_unstable_by_key(|reading| reading.at);
-        Ok(readings)
-    }
-
-    /// Fetches raw entries, logging in first and retrying once if the session
-    /// turns out to be stale.
-    async fn fetch_entries(
-        &mut self,
-        lookback: Duration,
-        max_count: u16,
-    ) -> Result<Vec<ShareGlucoseEntry>> {
         // Share measures the window in whole minutes and rejects zero.
-        let minutes = (lookback.as_secs() / 60).clamp(1, 1440) as u32;
-        let max_count = max_count.max(1);
+        let minutes =
+            (lookback.as_secs() / 60).clamp(1, u64::from(protocol::MAX_LOOKBACK_MINUTES)) as u32;
 
         let session = self.session().await?;
-        match self.get_entries(&session, minutes, max_count).await {
+        match self.fetch(&session, minutes, max_count).await {
             Err(Error::SessionExpired { code }) => {
                 debug!(%code, "Share session expired; logging in again");
                 self.session_id = None;
                 let session = self.session().await?;
-                self.get_entries(&session, minutes, max_count).await
+                self.fetch(&session, minutes, max_count).await
             }
             other => other,
         }
     }
 
-    async fn get_entries(
-        &self,
-        session_id: &str,
-        minutes: u32,
-        max_count: u16,
-    ) -> Result<Vec<ShareGlucoseEntry>> {
-        let url = format!("{}{GLUCOSE_PATH}", self.region.base_url());
-        let response = self
-            .http
-            .post(&url)
-            .query(&[
-                ("sessionId", session_id),
-                ("minutes", &minutes.to_string()),
-                ("maxCount", &max_count.to_string()),
-            ])
-            .header("Accept", "application/json")
-            .send()
-            .await?;
-
-        let response = check_fault(response).await?;
-        response
-            .json::<Vec<ShareGlucoseEntry>>()
-            .await
-            .map_err(|e| Error::Protocol(format!("could not parse the glucose response: {e}")))
+    async fn fetch(&self, session_id: &str, minutes: u32, max_count: u16) -> Result<Vec<Reading>> {
+        let request = protocol::glucose_request(self.region, session_id, minutes, max_count)?;
+        let response = self.send(request).await?;
+        protocol::parse_glucose(&response)
     }
 
     /// The current session ID, logging in if there is not one.
@@ -236,99 +140,299 @@ impl ShareClient {
     /// The two-step Share login: name and password to an account ID, then
     /// account ID and password to a session ID.
     async fn login(&self) -> Result<String> {
-        let account_id = self.authenticate().await?;
+        let request = protocol::authenticate_request(
+            self.region,
+            &self.credentials.account_name,
+            &self.credentials.password,
+        );
+        let response = self.send(request).await?;
+        let account_id = protocol::parse_id(&response, "account ID")?;
 
-        let url = format!("{}{LOGIN_PATH}", self.region.base_url());
-        let response = self
-            .http
-            .post(&url)
-            .header("Accept", "application/json")
-            .json(&LoginRequest {
-                account_id: &account_id,
-                password: &self.credentials.password,
-                application_id: APPLICATION_ID,
-            })
-            .send()
-            .await?;
+        let request = protocol::login_request(self.region, &account_id, &self.credentials.password);
+        let response = self.send(request).await?;
+        let session_id = protocol::parse_id(&response, "session ID")?;
 
-        let session_id = read_quoted_id(check_fault(response).await?, "session ID").await?;
-        if session_id == NULL_SESSION {
-            return Err(Error::Credentials {
-                code: "NullSessionId".to_owned(),
-                message: "Share accepted the account but issued no session".to_owned(),
-            });
-        }
         debug!(region = %self.region, "established a Dexcom Share session");
         Ok(session_id)
     }
 
-    async fn authenticate(&self) -> Result<String> {
-        let url = format!("{}{AUTHENTICATE_PATH}", self.region.base_url());
-        let response = self
-            .http
-            .post(&url)
-            .header("Accept", "application/json")
-            .json(&AuthenticateRequest {
-                account_name: &self.credentials.account_name,
-                password: &self.credentials.password,
-                application_id: APPLICATION_ID,
-            })
-            .send()
-            .await?;
-
-        let account_id = read_quoted_id(check_fault(response).await?, "account ID").await?;
-        if account_id == NULL_SESSION {
-            return Err(Error::Credentials {
-                code: "NullAccountId".to_owned(),
-                message: "no Share account matched those credentials".to_owned(),
-            });
-        }
-        Ok(account_id)
+    async fn send(&self, request: crate::http::ShareRequest) -> Result<crate::http::HttpResponse> {
+        self.transport
+            .post(request)
+            .await
+            .map_err(|e| Error::Transport(Box::new(e)))
     }
 }
 
-/// Turns a Share fault body into an [`Error`].
-///
-/// Share reports application errors with a 500 and a JSON body, so status alone
-/// does not distinguish "wrong password" from "service is down".
-async fn check_fault(response: reqwest::Response) -> Result<reqwest::Response> {
-    let status = response.status();
-    if status.is_success() {
-        return Ok(response);
-    }
-
-    let body = response.text().await.unwrap_or_default();
-    match serde_json::from_str::<ShareFault>(&body) {
-        Ok(fault) => Err(Error::from_fault(fault)),
-        Err(_) => Err(Error::Service {
-            code: status.as_u16().to_string(),
-            message: truncate(&body, 200),
-        }),
-    }
-}
-
-/// Reads a bare JSON string body, which is how Share returns IDs.
-async fn read_quoted_id(response: reqwest::Response, what: &str) -> Result<String> {
-    let body = response.text().await?;
-    serde_json::from_str::<String>(body.trim()).map_err(|_| {
-        Error::Protocol(format!(
-            "expected a {what} string, got {:?}",
-            truncate(&body, 100)
-        ))
-    })
-}
-
-fn truncate(text: &str, limit: usize) -> String {
-    let trimmed = text.trim();
-    match trimmed.char_indices().nth(limit) {
-        Some((cut, _)) => format!("{}…", &trimmed[..cut]),
-        None => trimmed.to_owned(),
+#[cfg(feature = "reqwest-transport")]
+impl ShareClient<crate::reqwest_transport::ReqwestTransport> {
+    /// Builds a client with a sensible default HTTP configuration.
+    pub fn new(credentials: Credentials, region: Region) -> Result<Self> {
+        let transport = crate::reqwest_transport::ReqwestTransport::new()?;
+        Ok(Self::with_transport(transport, credentials, region))
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::error::ErrorKind;
+    use crate::http::{HttpResponse, ShareRequest, TransportError};
+    use std::sync::Mutex;
+
+    /// The crate's `Result` alias takes one parameter; the transport's takes two.
+    type TransportResult = std::result::Result<HttpResponse, TransportError>;
+
+    const ACCOUNT: &str = "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee";
+    const SESSION: &str = "11111111-2222-4333-8444-555555555555";
+    const SESSION_TWO: &str = "99999999-8888-4777-8666-555555555555";
+
+    /// A transport that replays a script and records what it was asked for.
+    ///
+    /// This is what makes the login-and-retry flow testable: it is the part
+    /// most likely to be wrong and the part hardest to exercise against the
+    /// real service.
+    #[derive(Debug)]
+    struct ScriptedTransport {
+        responses: Mutex<std::collections::VecDeque<TransportResult>>,
+        seen: Mutex<Vec<ShareRequest>>,
+    }
+
+    impl ScriptedTransport {
+        fn new(responses: Vec<TransportResult>) -> Self {
+            Self {
+                responses: Mutex::new(responses.into()),
+                seen: Mutex::new(Vec::new()),
+            }
+        }
+
+        fn ok(bodies: Vec<(u16, &str)>) -> Self {
+            Self::new(
+                bodies
+                    .into_iter()
+                    .map(|(status, body)| Ok(HttpResponse::new(status, body)))
+                    .collect(),
+            )
+        }
+
+        fn requests(&self) -> Vec<ShareRequest> {
+            self.seen.lock().expect("lock").clone()
+        }
+
+        fn remaining(&self) -> usize {
+            self.responses.lock().expect("lock").len()
+        }
+    }
+
+    impl HttpTransport for ScriptedTransport {
+        type Error = TransportError;
+
+        async fn post(&self, request: ShareRequest) -> TransportResult {
+            self.seen.lock().expect("lock").push(request);
+            self.responses
+                .lock()
+                .expect("lock")
+                .pop_front()
+                .unwrap_or_else(|| Err(TransportError("script exhausted".to_owned())))
+        }
+    }
+
+    const GLUCOSE_BODY: &str = r#"[{"WT":"/Date(1700000400000)/","Value":142,"Trend":"Flat"}]"#;
+
+    fn client(transport: ScriptedTransport) -> ShareClient<ScriptedTransport> {
+        ShareClient::with_transport(
+            transport,
+            Credentials::new("someone@example.com", "hunter2"),
+            Region::Us,
+        )
+    }
+
+    #[tokio::test]
+    async fn a_first_fetch_logs_in_then_reads() {
+        let mut client = client(ScriptedTransport::ok(vec![
+            (200, &format!("\"{ACCOUNT}\"")),
+            (200, &format!("\"{SESSION}\"")),
+            (200, GLUCOSE_BODY),
+        ]));
+
+        let readings = client.readings(DEFAULT_LOOKBACK, 2).await.expect("fetch");
+        assert_eq!(readings.len(), 1);
+        assert_eq!(readings[0].glucose.mgdl(), 142);
+        assert!(client.has_session());
+
+        let requests = client.transport.requests();
+        assert_eq!(requests.len(), 3, "authenticate, login, then read");
+        assert!(requests[0].url.contains("AuthenticatePublisherAccount"));
+        assert!(requests[1].url.contains("LoginPublisherAccountById"));
+        assert!(requests[2].url.contains("ReadPublisherLatestGlucoseValues"));
+        assert!(requests[2].url.contains(&format!("sessionId={SESSION}")));
+    }
+
+    #[tokio::test]
+    async fn a_second_fetch_reuses_the_session() {
+        let mut client = client(ScriptedTransport::ok(vec![
+            (200, &format!("\"{ACCOUNT}\"")),
+            (200, &format!("\"{SESSION}\"")),
+            (200, GLUCOSE_BODY),
+            (200, GLUCOSE_BODY),
+        ]));
+
+        client.readings(DEFAULT_LOOKBACK, 2).await.expect("first");
+        client.readings(DEFAULT_LOOKBACK, 2).await.expect("second");
+
+        assert_eq!(
+            client.transport.requests().len(),
+            4,
+            "the second fetch must not log in again"
+        );
+    }
+
+    #[tokio::test]
+    async fn an_expired_session_is_renewed_and_the_read_retried() {
+        let mut client = client(ScriptedTransport::ok(vec![
+            (200, &format!("\"{ACCOUNT}\"")),
+            (200, &format!("\"{SESSION}\"")),
+            (200, GLUCOSE_BODY),
+            // Hours later, Share forgets the session.
+            (500, r#"{"Code":"SessionIdNotFound","Message":""}"#),
+            (200, &format!("\"{ACCOUNT}\"")),
+            (200, &format!("\"{SESSION_TWO}\"")),
+            (200, GLUCOSE_BODY),
+        ]));
+
+        client.readings(DEFAULT_LOOKBACK, 2).await.expect("first");
+        let readings = client.readings(DEFAULT_LOOKBACK, 2).await.expect("second");
+        assert_eq!(readings.len(), 1, "the caller never sees the expiry");
+
+        let requests = client.transport.requests();
+        assert_eq!(requests.len(), 7);
+        assert!(
+            requests[6]
+                .url
+                .contains(&format!("sessionId={SESSION_TWO}")),
+            "the retry must use the new session"
+        );
+    }
+
+    #[tokio::test]
+    async fn the_session_is_renewed_at_most_once_per_call() {
+        // Otherwise a server that always says "expired" becomes an infinite
+        // login loop against Dexcom.
+        let mut client = client(ScriptedTransport::ok(vec![
+            (200, &format!("\"{ACCOUNT}\"")),
+            (200, &format!("\"{SESSION}\"")),
+            (500, r#"{"Code":"SessionIdNotFound"}"#),
+            (200, &format!("\"{ACCOUNT}\"")),
+            (200, &format!("\"{SESSION_TWO}\"")),
+            (500, r#"{"Code":"SessionIdNotFound"}"#),
+        ]));
+
+        let error = client
+            .readings(DEFAULT_LOOKBACK, 2)
+            .await
+            .expect_err("should give up");
+        assert!(matches!(error, Error::SessionExpired { .. }));
+        assert_eq!(client.transport.remaining(), 0);
+        assert_eq!(client.transport.requests().len(), 6);
+    }
+
+    #[tokio::test]
+    async fn a_wrong_password_fails_without_retrying() {
+        let mut client = client(ScriptedTransport::ok(vec![(
+            500,
+            r#"{"Code":"SSO_AuthenticatePasswordInvalid","Message":"nope"}"#,
+        )]));
+
+        let error = client
+            .readings(DEFAULT_LOOKBACK, 2)
+            .await
+            .expect_err("should fail");
+        assert_eq!(error.kind(), ErrorKind::Credentials);
+        assert!(!error.is_retryable());
+        assert_eq!(client.transport.requests().len(), 1, "no second attempt");
+        assert!(!client.has_session());
+    }
+
+    #[tokio::test]
+    async fn a_transport_failure_surfaces_as_a_network_error() {
+        let mut client = client(ScriptedTransport::new(vec![Err(TransportError(
+            "dns failure".to_owned(),
+        ))]));
+
+        let error = client
+            .readings(DEFAULT_LOOKBACK, 2)
+            .await
+            .expect_err("should fail");
+        assert_eq!(error.kind(), ErrorKind::Network);
+        assert!(error.is_retryable());
+        // The underlying cause is preserved rather than flattened to a string.
+        let source = std::error::Error::source(&error).expect("source");
+        assert!(source.to_string().contains("dns failure"), "{source}");
+    }
+
+    #[tokio::test]
+    async fn latest_reading_returns_the_newest_of_several() {
+        let mut client = client(ScriptedTransport::ok(vec![
+            (200, &format!("\"{ACCOUNT}\"")),
+            (200, &format!("\"{SESSION}\"")),
+            (
+                200,
+                r#"[
+                    {"WT":"/Date(1700000400000)/","Value":142,"Trend":"Flat"},
+                    {"WT":"/Date(1700000100000)/","Value":138,"Trend":"FortyFiveUp"}
+                ]"#,
+            ),
+        ]));
+
+        let reading = client.latest_reading().await.expect("fetch").expect("some");
+        assert_eq!(reading.glucose.mgdl(), 142);
+    }
+
+    #[tokio::test]
+    async fn an_empty_window_is_not_an_error() {
+        let mut client = client(ScriptedTransport::ok(vec![
+            (200, &format!("\"{ACCOUNT}\"")),
+            (200, &format!("\"{SESSION}\"")),
+            (200, "[]"),
+        ]));
+        assert_eq!(client.latest_reading().await.expect("fetch"), None);
+    }
+
+    #[tokio::test]
+    async fn forgetting_the_session_forces_a_fresh_login() {
+        let mut client = client(ScriptedTransport::ok(vec![
+            (200, &format!("\"{ACCOUNT}\"")),
+            (200, &format!("\"{SESSION}\"")),
+            (200, GLUCOSE_BODY),
+            (200, &format!("\"{ACCOUNT}\"")),
+            (200, &format!("\"{SESSION_TWO}\"")),
+            (200, GLUCOSE_BODY),
+        ]));
+
+        client.readings(DEFAULT_LOOKBACK, 2).await.expect("first");
+        assert!(client.has_session());
+        client.forget_session();
+        assert!(!client.has_session());
+        client.readings(DEFAULT_LOOKBACK, 2).await.expect("second");
+        assert_eq!(client.transport.requests().len(), 6);
+    }
+
+    #[tokio::test]
+    async fn the_lookback_window_reaches_the_query() {
+        let mut client = client(ScriptedTransport::ok(vec![
+            (200, &format!("\"{ACCOUNT}\"")),
+            (200, &format!("\"{SESSION}\"")),
+            (200, GLUCOSE_BODY),
+        ]));
+        client
+            .readings(Duration::from_secs(30 * 60), 6)
+            .await
+            .expect("fetch");
+
+        let url = &client.transport.requests()[2].url;
+        assert!(url.contains("minutes=30"), "{url}");
+        assert!(url.contains("maxCount=6"), "{url}");
+    }
 
     #[test]
     fn credentials_do_not_leak_the_password_into_logs() {
@@ -339,51 +443,9 @@ mod tests {
     }
 
     #[test]
-    fn truncate_keeps_short_text_intact() {
-        assert_eq!(truncate("  short  ", 100), "short");
-        assert_eq!(
-            truncate(&"x".repeat(300), 200),
-            format!("{}…", "x".repeat(200))
-        );
-    }
-
-    #[test]
-    fn truncate_does_not_split_a_character() {
-        // Multi-byte characters must not be cut mid-encoding.
-        let text = "é".repeat(300);
-        let cut = truncate(&text, 200);
-        assert_eq!(cut.chars().count(), 201);
-    }
-
-    #[test]
     fn a_client_starts_without_a_session() {
-        let client = ShareClient::new(Credentials::new("a", "b"), Region::Ous).expect("build");
+        let client = client(ScriptedTransport::ok(vec![]));
         assert!(!client.has_session());
-        assert_eq!(client.region(), Region::Ous);
-    }
-
-    #[test]
-    fn the_authenticate_body_uses_the_field_names_share_expects() {
-        let body = serde_json::to_value(AuthenticateRequest {
-            account_name: "someone",
-            password: "secret",
-            application_id: APPLICATION_ID,
-        })
-        .expect("serialize");
-        assert_eq!(body["accountName"], "someone");
-        assert_eq!(body["password"], "secret");
-        assert_eq!(body["applicationId"], APPLICATION_ID);
-    }
-
-    #[test]
-    fn the_login_body_uses_the_field_names_share_expects() {
-        let body = serde_json::to_value(LoginRequest {
-            account_id: "an-account-id",
-            password: "secret",
-            application_id: APPLICATION_ID,
-        })
-        .expect("serialize");
-        assert_eq!(body["accountId"], "an-account-id");
-        assert_eq!(body["applicationId"], APPLICATION_ID);
+        assert_eq!(client.region(), Region::Us);
     }
 }

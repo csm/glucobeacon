@@ -9,8 +9,11 @@ pub type Result<T> = std::result::Result<T, Error>;
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
     /// The request never completed: DNS, TCP, TLS, or timeout.
+    ///
+    /// Boxed because the underlying error depends on which transport is in
+    /// use — `reqwest` on a workstation, ESP-IDF's client on the device.
     #[error("could not reach the Dexcom Share service")]
-    Transport(#[source] reqwest::Error),
+    Transport(#[source] Box<dyn std::error::Error + Send + Sync>),
 
     /// Share rejected the credentials. Retrying will not help.
     #[error("Dexcom rejected the credentials ({code})")]
@@ -73,12 +76,6 @@ impl Error {
     /// stop hammering Share and say so on the display instead.
     pub fn is_retryable(&self) -> bool {
         self.kind() != ErrorKind::Credentials
-    }
-}
-
-impl From<reqwest::Error> for Error {
-    fn from(error: reqwest::Error) -> Self {
-        Self::Transport(error)
     }
 }
 

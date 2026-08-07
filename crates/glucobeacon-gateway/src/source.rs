@@ -6,19 +6,23 @@
 //! Dexcom account and without waiting five minutes between interesting events.
 
 use glucobeacon_core::{Glucose, Reading, Timestamp, Trend};
-use glucobeacon_dexcom::{Error as DexcomError, ErrorKind, ShareClient};
+use glucobeacon_dexcom::{Error as DexcomError, ErrorKind, HttpTransport, ShareClient};
 use glucobeacon_proto::UplinkState;
 
 /// A source of CGM readings.
+///
+/// Generic over the HTTP transport so the same relay logic serves both the
+/// workstation build, which uses `reqwest`, and an ESP-IDF build, which uses
+/// the client ESP-IDF already links.
 #[derive(Debug)]
-pub enum Source {
+pub enum Source<T> {
     /// The real thing.
-    Share(Box<ShareClient>),
+    Share(Box<ShareClient<T>>),
     /// A synthetic waveform, for development.
     Demo(DemoSource),
 }
 
-impl Source {
+impl<T: HttpTransport> Source<T> {
     /// Fetches any readings newer than `since`, oldest first.
     pub async fn poll(&mut self, now: Timestamp, since: Option<Timestamp>) -> PollResult {
         match self {

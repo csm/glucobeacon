@@ -7,17 +7,35 @@
 //! is wrong.
 //!
 //! [`app`] is the logic, with no I/O in it. [`hal`] is the hardware, as traits.
-//! [`sim`] implements those traits against a workstation — the panel becomes an
-//! image file, the buzzer and LED log, and the button is the Enter key — so
-//! everything above the traits is the same code that will run on the device.
+//! [`framebuffer`] is what gets drawn into. [`sim`] implements the traits
+//! against a workstation — the panel becomes an image file, the buzzer and LED
+//! log, and the button is the Enter key.
+//!
+//! Everything except [`sim`] is `no_std` and allocation-free, so it runs on the
+//! ESP32 unchanged. Build with `default-features = false` for the device.
+
+#![cfg_attr(not(feature = "std"), no_std)]
 
 pub mod app;
+pub mod framebuffer;
 pub mod glyphs;
 pub mod hal;
-pub mod sim;
 pub mod state;
 pub mod ui;
 
+#[cfg(feature = "std")]
+pub mod sim;
+
 pub use app::{DisplayApp, Tick};
+pub use framebuffer::{FrameBuffer, bytes_for};
 pub use state::{Applied, DisplayState};
 pub use ui::{Frame, PANEL_HEIGHT, PANEL_WIDTH};
+
+/// Bytes needed for a framebuffer covering the whole panel.
+pub const PANEL_BYTES: usize = bytes_for(PANEL_WIDTH, PANEL_HEIGHT);
+
+/// A framebuffer sized for the panel.
+///
+/// About 48 KB. Too big for the stack on an ESP32 — put it in a `static`, or in
+/// PSRAM if the board has any.
+pub type PanelBuffer = FrameBuffer<PANEL_BYTES>;

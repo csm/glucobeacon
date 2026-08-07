@@ -41,12 +41,25 @@ jobs:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
         with:
-          targets: thumbv7em-none-eabihf
+          targets: riscv32imc-unknown-none-elf
       - uses: Swatinem/rust-cache@v2
 
-      # The display node will run these two crates on bare metal. Building for
-      # a target with no std is the only way to keep that true.
-      - name: Build core and proto without std
+      # Everything that will run on the ESP32 gets built for a target with no
+      # std, which is the only way to keep it true.
+      #
+      # riscv32imc rather than an Xtensa target: Xtensa needs the esp-rs
+      # toolchain fork, which stock rustup cannot install, and riscv32imc is
+      # the stricter check anyway — it has no atomic compare-and-swap, so
+      # anything that quietly depends on one fails here rather than on the
+      # bench.
+      - name: Build the device crates without std
         run: |
-          cargo build -p glucobeacon-core -p glucobeacon-proto \
-            --no-default-features --target thumbv7em-none-eabihf
+          cargo build \
+            -p glucobeacon-core -p glucobeacon-proto -p glucobeacon-display \
+            --no-default-features --target riscv32imc-unknown-none-elf
+
+      # The gateway's Dexcom client must not require reqwest: an ESP-IDF build
+      # uses the HTTP client ESP-IDF already links, rather than a second TLS
+      # stack.
+      - name: Build the Dexcom client without reqwest
+        run: cargo build -p glucobeacon-dexcom --no-default-features

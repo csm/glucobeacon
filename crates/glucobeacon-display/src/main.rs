@@ -14,6 +14,7 @@ use glucobeacon_proto::udp::UdpLink;
 use glucobeacon_proto::{Link, LinkError, Message, Packet, link::SeqCounter};
 use tracing::{debug, info, warn};
 
+use glucobeacon_display::PANEL_BYTES;
 use glucobeacon_display::app::DisplayApp;
 use glucobeacon_display::hal::{Button, Buzzer, Indicator, Panel};
 use glucobeacon_display::sim::{ConsoleBuzzer, ConsoleLed, SimPanel, StdinButton};
@@ -57,7 +58,8 @@ fn main() -> Result<()> {
 
     let mut link = UdpLink::bind(cli.listen, cli.peer, TICK)
         .with_context(|| format!("binding the link to {}", cli.listen))?;
-    let mut panel = SimPanel::new(PANEL_WIDTH, PANEL_HEIGHT, &cli.panel);
+    let mut panel = SimPanel::<PANEL_BYTES>::new(PANEL_WIDTH, PANEL_HEIGHT, &cli.panel)
+        .context("sizing the panel framebuffer")?;
     let mut buzzer = ConsoleBuzzer::new();
     let mut led = ConsoleLed::new();
     let mut button = StdinButton::spawn().context("watching stdin for button presses")?;
@@ -135,7 +137,7 @@ fn main() -> Result<()> {
     }
 }
 
-fn repaint(panel: &mut SimPanel, app: &DisplayApp, uptime: Duration) -> Result<()> {
+fn repaint(panel: &mut SimPanel<PANEL_BYTES>, app: &DisplayApp, uptime: Duration) -> Result<()> {
     let frame = Frame {
         now: app.now(uptime),
         uptime,

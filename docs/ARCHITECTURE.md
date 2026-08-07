@@ -130,16 +130,89 @@ stamp on every packet and carries it forward on a monotonic uptime counter.
 Before the first packet it does not know what time it is and says so, rather than
 showing a confident "2 min ago" that is hours wrong.
 
+## Target hardware
+
+ESP32 dev boards with an on-board LoRa module, one per end.
+
+### Which toolchain depends on the variant
+
+This is the first thing to pin down, because it decides how the project is
+built:
+
+| Variant | Core | Toolchain | `no_std` target | `std` target |
+| --- | --- | --- | --- | --- |
+| ESP32, ESP32-S2, ESP32-S3 | Xtensa | `espup` (an esp-rs fork of rustc; stock rustup cannot install it) | `xtensa-esp32-none-elf` | `xtensa-esp32-espidf` |
+| ESP32-C3, C6, H2 | RISC-V | stock stable Rust | `riscv32imc-unknown-none-elf` | `riscv32imc-esp-espidf` |
+
+CI cross-builds for `riscv32imc-unknown-none-elf`. That is not necessarily the
+shipping target — it is the one a stock toolchain can reach, and it is the
+stricter check: RISC-V `imc` has no atomic compare-and-swap, so anything that
+quietly depends on one fails in CI rather than on the bench.
+
+### `std` on one end, `no_std` on the other
+
+The two ends want different things, and the crate split already allows it:
+
+- **Gateway: `std`, via `esp-idf-svc`.** It needs WiFi and TLS. ESP-IDF brings
+  both, along with a working mbedTLS and a socket layer. Doing HTTPS from
+  `no_std` on this chip is possible and not worth it.
+- **Display node: `no_std`, via `esp-hal`.** It needs SPI, GPIO, and a timer.
+  Everything in `glucobeacon-display` except the `sim` module is `no_std` and
+  allocation-free, so the whole node — alarm engine, layout, glyphs,
+  framebuffer — cross-compiles for bare metal today.
+
+`glucobeacon-dexcom` is written against an `HttpTransport` trait rather than
+against `reqwest` for this reason: an ESP-IDF build implements the trait over
+`esp_idf_svc::http::client::EspHttpConnection` and turns the `reqwest-transport`
+feature off, so the device is not carrying two TLS stacks to reach one JSON API.
+
+### Memory
+
+The ESP32 has roughly 320 KB of usable DRAM. The panel framebuffer is the one
+allocation big enough to matter:
+
+| | Bytes |
+| --- | --- |
+| 800×480 at one byte per pixel | 384 000 — does not fit |
+| 800×480 packed, one bit per pixel | 48 000 |
+
+Hence `framebuffer::FrameBuffer`, which is packed, and `PanelBuffer`, which is
+sized for the panel. 48 KB is still far too much for the stack: put it in a
+`static`, or in PSRAM if the board has any. Everything else is small — the
+reading history is 36 entries, and a frame on the wire is about 25 bytes.
+
+If DRAM turns out to be tight, the fallback is a controller that supports
+partial refresh and a windowed buffer, updating only the region that changed.
+That is also why the framebuffer keeps its row padding canonical: a
+partial-refresh driver decides what to send by diffing the previous buffer
+against the new one, and padding bits that varied with how an image was drawn
+would show up as spurious changes.
+
 ## Bringing up hardware
 
 Nothing above the traits changes. What is needed:
 
 1. A `Link` implementation for the LoRa module — `send_frame` and `recv_frame`
-   over SPI, with `recv_frame` returning `Ok(None)` on timeout.
+   over SPI, with `recv_frame` returning `Ok(None)` on timeout. Check which
+   radio the board carries: older Heltec/TTGO boards are SX1276 (SX127x
+   family), newer ones are SX1262 (SX126x). The `lora-phy` crate covers both
+   behind one API. Both ends must agree on frequency, spreading factor,
+   bandwidth, and sync word — and the legal band depends on region (868 MHz in
+   the EU, 915 MHz in the US).
 2. `Panel` plus `DrawTarget<Color = BinaryColor>` for the e-ink controller.
+   `FrameBuffer` already implements `DrawTarget`, so this is `flush` pushing
+   `as_bytes()` over SPI.
 3. `Buzzer`, `Indicator`, and `Button` for the piezo, LED, and switch. The button
    must latch its press: `take_press` reports a press that happened between
    polls, because the one thing a user must always be able to do is silence an
-   alarm.
+   alarm. Debouncing belongs in the implementation.
+4. An `HttpTransport` for the gateway over ESP-IDF's HTTP client.
 
-`glucobeacon-display::sim` is a worked example of all of these.
+`glucobeacon-display::sim` is a worked example of 2 and 3, and
+`glucobeacon-dexcom::reqwest_transport` of 4.
+
+Two things the simulator does not model and the hardware will need: the e-ink
+panel has a finite refresh budget and ghosts if it is only ever partially
+refreshed, so a periodic full refresh is worth scheduling; and the display node
+is the one that must survive a power cut without a wall clock, which it already
+handles by learning the time from packets rather than assuming it.

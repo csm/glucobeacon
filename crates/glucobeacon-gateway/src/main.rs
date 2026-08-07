@@ -7,7 +7,7 @@ use std::time::{Duration as StdDuration, SystemTime, UNIX_EPOCH};
 use anyhow::{Context, Result, bail};
 use clap::Parser;
 use glucobeacon_core::{Reading, Timestamp};
-use glucobeacon_dexcom::{Credentials, Region, ShareClient};
+use glucobeacon_dexcom::{Credentials, Region, ReqwestTransport, ShareClient};
 use glucobeacon_proto::link::SeqCounter;
 use glucobeacon_proto::udp::UdpLink;
 use glucobeacon_proto::{Message, Packet, ReadingReport, Status, UplinkState};
@@ -18,6 +18,11 @@ use glucobeacon_gateway::config::{Config, ENV_ACCOUNT, ENV_PASSWORD};
 use glucobeacon_gateway::radio::{self, LinkHandle};
 use glucobeacon_gateway::schedule::PollSchedule;
 use glucobeacon_gateway::source::{DemoSource, Source, uplink_state};
+
+/// The gateway binary talks to Dexcom over `reqwest`. An ESP-IDF firmware
+/// build swaps this for a transport over ESP-IDF's own HTTP client and reuses
+/// everything else.
+type GatewaySource = Source<ReqwestTransport>;
 
 /// How long the link thread waits for an inbound frame before looping.
 const LINK_POLL_TIMEOUT: StdDuration = StdDuration::from_millis(200);
@@ -85,7 +90,7 @@ async fn main() -> Result<()> {
 }
 
 /// The relay loop.
-async fn run(config: Config, mut source: Source, mut link: LinkHandle) -> Result<()> {
+async fn run(config: Config, mut source: GatewaySource, mut link: LinkHandle) -> Result<()> {
     let schedule = PollSchedule::new(config.poll);
     let mut seq = SeqCounter::new();
 
@@ -215,7 +220,7 @@ fn handle_inbound(packet: Packet) {
 }
 
 /// A single poll, for checking configuration.
-async fn poll_once(source: &mut Source) -> Result<()> {
+async fn poll_once(source: &mut GatewaySource) -> Result<()> {
     let now = wall_clock();
     let readings = source
         .poll(now, None)
@@ -257,7 +262,7 @@ fn load_config(cli: &Cli) -> Result<Config> {
     Ok(config)
 }
 
-fn build_source(cli: &Cli, config: &Config) -> Result<Source> {
+fn build_source(cli: &Cli, config: &Config) -> Result<GatewaySource> {
     if cli.demo {
         return Ok(Source::Demo(DemoSource::new(wall_clock())));
     }

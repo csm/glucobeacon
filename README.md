@@ -20,14 +20,15 @@ like everything is fine.
 crates/
   glucobeacon-core      domain types and the alarm state machine   (no_std)
   glucobeacon-proto     the wire protocol and the Link trait       (no_std)
-  glucobeacon-dexcom    Dexcom Share client                        (std, gateway only)
-  glucobeacon-gateway   the WiFi node                              (binary)
-  glucobeacon-display   the e-ink node                             (binary)
+  glucobeacon-dexcom    Dexcom Share client                        (gateway only)
+  glucobeacon-gateway   the WiFi node                              (lib + binary)
+  glucobeacon-display   the e-ink node                             (lib + binary, no_std)
 ```
 
-`core` and `proto` are `no_std` and allocation-free, and CI cross-compiles them
-for `thumbv7em-none-eabihf` to keep them that way. Both nodes depend on both, so
-neither end can drift on what a reading means or when it should alarm.
+`core` and `proto` are `no_std` and allocation-free, and so is all of `display`
+except its simulator module. CI cross-compiles them for a bare-metal target to
+keep it that way. Both nodes depend on both shared crates, so neither end can
+drift on what a reading means or when it should alarm.
 
 See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for how the pieces fit and why.
 
@@ -75,22 +76,43 @@ wrong password. Set `dexcom.region` (`us`, `ous`, or `jp`) accordingly.
 
 See [glucobeacon.example.toml](glucobeacon.example.toml) for the settings.
 
+## Target hardware
+
+An ESP32 dev board with an on-board LoRa module at each end. The gateway wants
+`std` via `esp-idf-svc`, because it needs WiFi and TLS and ESP-IDF already has
+both. The display node wants `no_std` via `esp-hal`, because it needs SPI, GPIO,
+and a timer — and all of its logic already cross-compiles for bare metal.
+
+Which toolchain depends on the variant, and it is worth pinning down early:
+ESP32/S2/S3 are Xtensa and need `espup`, an esp-rs fork of rustc that stock
+rustup cannot install; ESP32-C3/C6/H2 are RISC-V and build on stock stable Rust.
+
+The panel framebuffer is the one allocation big enough to matter on a chip with
+~320 KB of DRAM: 48 KB packed at one bit per pixel, versus 384 KB at one byte.
+Hence `framebuffer::FrameBuffer`. See
+[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the toolchain table, the memory
+budget, and what each hardware trait needs.
+
 ## Status
 
 The domain logic, wire protocol, Dexcom client, and both node applications are
-written and tested. What is not here yet is the hardware: the display node runs
+written and tested. What is not here yet is the hardware. The display node runs
 as a workstation simulator, with the panel, buzzer, LED, and button behind the
-traits in `glucobeacon-display::hal`. Bringing up real hardware means
-implementing those traits and the `Link` trait for a LoRa driver — nothing above
-them changes.
+traits in `glucobeacon-display::hal`, and the radio behind `Link`. Bringing up
+hardware means implementing those traits — nothing above them changes.
 
 ## Development
 
 ```sh
 cargo test --workspace --all-features
 cargo clippy --workspace --all-targets --all-features
-cargo build -p glucobeacon-core -p glucobeacon-proto \
-  --no-default-features --target thumbv7em-none-eabihf
+
+# Everything that will run on the device, without std.
+cargo build -p glucobeacon-core -p glucobeacon-proto -p glucobeacon-display \
+  --no-default-features --target riscv32imc-unknown-none-elf
+
+# The Dexcom client without reqwest, as an ESP-IDF build would use it.
+cargo build -p glucobeacon-dexcom --no-default-features
 ```
 
 ## Safety

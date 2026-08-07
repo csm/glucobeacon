@@ -9,14 +9,38 @@ repository.workspace = true
 authors.workspace = true
 
 [dependencies]
-anyhow = "1.0.104"
-clap = { version = "4.6.6", features = ["derive", "env"] }
 embedded-graphics = "0.8.2"
-glucobeacon-core = { version = "0.1.0", path = "../glucobeacon-core" }
-glucobeacon-proto = { version = "0.1.0", path = "../glucobeacon-proto", features = ["udp-link"] }
-heapless = "0.9.3"
-tracing = "0.1.44"
-tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }
+glucobeacon-core = { workspace = true }
+glucobeacon-proto = { workspace = true }
+heapless = { version = "0.9.3", default-features = false }
+
+# The workstation simulator only.
+anyhow = { version = "1.0.104", optional = true }
+clap = { version = "4.6.6", features = ["derive", "env"], optional = true }
+tracing = { version = "0.1.44", optional = true }
+tracing-subscriber = { version = "0.3.23", features = [
+  "env-filter",
+], optional = true }
+
+[features]
+default = ["std"]
+# The workstation simulator: writes the panel to an image file, logs the buzzer
+# and LED, and reads the button from stdin. Off for a device build, where
+# everything else in the crate is no_std and allocation-free.
+std = [
+  "dep:anyhow",
+  "dep:clap",
+  "dep:tracing",
+  "dep:tracing-subscriber",
+  "glucobeacon-core/std",
+  "glucobeacon-proto/std",
+  "glucobeacon-proto/udp-link",
+]
+
+# The binary is the simulator, so it cannot be built without `std`.
+[[bin]]
+name = "glucobeacon-display"
+required-features = ["std"]
 
 [lints]
 workspace = true

@@ -36,6 +36,15 @@ const BANNER_HEIGHT: u32 = 52;
 const GRAPH_TOP: i32 = 384;
 const GRAPH_BOTTOM: i32 = 468;
 
+/// What goes between the fields of the header and the subline.
+///
+/// A pipe rather than the typographically nicer `·`, and this is not fussiness:
+/// the fonts here are `embedded_graphics::mono_font::ascii`, whose glyph tables
+/// stop at `~`. Anything outside them draws as `?` — so a middle dot reached the
+/// panel as "link ok ? no sensor data", which reads as a fault rather than as
+/// punctuation. A dash would be worse still next to a signed delta.
+const SEPARATOR: char = '|';
+
 /// The window the graph covers.
 const GRAPH_SPAN: Duration = Duration::from_mins(180);
 /// Glucose range the graph plots; values outside are clamped to the edges.
@@ -91,7 +100,7 @@ where
 
     let mut status: String<64> = String::new();
     let _ = write!(status, "link {}", link_age(frame));
-    let _ = write!(status, "  ·  {}", frame.state.uplink().label());
+    let _ = write!(status, "  {SEPARATOR}  {}", frame.state.uplink().label());
     Text::with_text_style(
         &status,
         Point::new(PANEL_WIDTH as i32 - MARGIN, 22),
@@ -168,8 +177,13 @@ where
 
     if let Some(reading) = frame.state.latest() {
         let tenths = reading.glucose.mmol_l_tenths();
-        let _ = write!(line, "   ·   {}.{} mmol/L", tenths / 10, tenths % 10);
-        let _ = write!(line, "   ·   {}", reading_age(frame));
+        let _ = write!(
+            line,
+            "   {SEPARATOR}   {}.{} mmol/L",
+            tenths / 10,
+            tenths % 10
+        );
+        let _ = write!(line, "   {SEPARATOR}   {}", reading_age(frame));
     }
 
     Text::with_baseline(
@@ -369,6 +383,50 @@ mod tests {
     use crate::state::DisplayState;
     use glucobeacon_core::{AlarmPolicy, Reading, Trend};
     use glucobeacon_proto::{Message, Packet, ReadingReport, Status, UplinkState};
+
+    /// Whether every character has a glyph in the fonts this file draws with.
+    ///
+    /// `embedded_graphics::mono_font::ascii` covers space through `~` and draws
+    /// everything else as `?`. So a character outside that range does not fail
+    /// loudly, or even look like a missing glyph — it looks like the display
+    /// saying it does not know something, which is a thing this panel means.
+    fn drawable(text: &str) -> bool {
+        text.chars().all(|c| (' '..='~').contains(&c))
+    }
+
+    #[test]
+    fn the_field_separator_has_a_glyph() {
+        // Through `write!`, because that is how it reaches the panel.
+        let mut text: String<4> = String::new();
+        let _ = write!(text, "{SEPARATOR}");
+        assert!(drawable(&text), "{text}");
+    }
+
+    #[test]
+    fn every_uplink_label_has_a_glyph() {
+        for state in [
+            UplinkState::Ok,
+            UplinkState::NoNetwork,
+            UplinkState::AuthFailed,
+            UplinkState::Unreachable,
+            UplinkState::NoRecentData,
+        ] {
+            assert!(drawable(state.label()), "{state:?}: {}", state.label());
+        }
+    }
+
+    #[test]
+    fn every_alarm_label_has_a_glyph() {
+        for kind in [
+            AlarmKind::Stale,
+            AlarmKind::High,
+            AlarmKind::Low,
+            AlarmKind::UrgentHigh,
+            AlarmKind::UrgentLow,
+        ] {
+            assert!(drawable(kind.label()), "{kind:?}: {}", kind.label());
+        }
+    }
 
     /// A canvas the size of the real panel.
     ///

@@ -88,7 +88,9 @@ against `esp-hal` for `no_std`, and all of its logic already compiles for
 `xtensa-esp32s3-none-elf` today.
 
 Firmware lives in [`firmware/`](firmware/), outside the workspace, so building
-from the root does not require the Xtensa toolchain.
+from the root does not require the Xtensa toolchain. The wiring is in
+[`docs/wiring/`](docs/wiring/) as SVG, PDF, PNG and plain text — all generated
+from the firmware's own pin map, so the diagram cannot disagree with the code.
 
 See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the memory budget, the
 radio parameters, and what each hardware trait needs.

@@ -34,6 +34,23 @@ jobs:
         env:
           RUSTDOCFLAGS: -D warnings
 
+      # The wiring diagram is generated from the firmware's pin map. If they
+      # drift apart, the diagram is a lie — which is how v1.0 ended up with the
+      # e-paper bus on top of the radio. Only the SVG and text are checked; the
+      # PDF and PNG are rendered from the SVG and need a browser.
+      - name: Wiring diagram matches the firmware
+        run: |
+          python3 tools/wiring/generate.py
+          # `git status --porcelain` rather than `git diff`, so a newly added
+          # output file counts too — `git diff` is blind to untracked files.
+          changed=$(git status --porcelain -- docs/wiring/)
+          if [ -n "$changed" ]; then
+            echo "The wiring diagram is out of date with board.rs:"
+            echo "$changed"
+            echo "Run ./tools/wiring/render.sh and commit the result."
+            exit 1
+          fi
+
   embedded:
     name: no_std cross-build
     runs-on: ubuntu-latest

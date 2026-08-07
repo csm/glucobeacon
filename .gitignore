@@ -25,3 +25,7 @@ glucobeacon.toml
 
 # Simulated e-ink output
 *.pbm
+
+# Python bytecode from the wiring diagram generator
+__pycache__/
+*.pyc

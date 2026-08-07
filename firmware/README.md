@@ -91,6 +91,13 @@ which looks like a toolchain-version problem and is not one.
 The board enumerates as a CP2102 USB-to-serial bridge. On Linux you will need
 to be in the `dialout` group.
 
+## Wiring
+
+[`docs/wiring/`](../docs/wiring/) has the diagram as SVG, PDF, PNG and plain
+text. All four are generated from `glucobeacon-fw-display/src/board.rs`, so
+they cannot drift from the firmware; regenerate with `./tools/wiring/render.sh`
+and CI fails if they are stale.
+
 ## Reconciling wiring diagram v1.0
 
 Most of the diagram is encoded as-is: US915 on the 915 MHz board, buzzer on

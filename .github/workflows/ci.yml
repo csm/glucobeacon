@@ -47,11 +47,12 @@ jobs:
       # Everything that will run on the ESP32 gets built for a target with no
       # std, which is the only way to keep it true.
       #
-      # riscv32imc rather than an Xtensa target: Xtensa needs the esp-rs
-      # toolchain fork, which stock rustup cannot install, and riscv32imc is
-      # the stricter check anyway — it has no atomic compare-and-swap, so
-      # anything that quietly depends on one fails here rather than on the
-      # bench.
+      # This is the RISC-V check; the `xtensa` job below builds the same crates
+      # for the real target. Both are worth having. This one runs on a stock
+      # toolchain with no unstable flags, so it cannot break the way that one
+      # can, and riscv32imc is the stricter check on portability: it has no
+      # atomic compare-and-swap, so anything that quietly depends on one fails
+      # here rather than on the bench.
       - name: Build the device crates without std
         run: |
           cargo build \

@@ -72,6 +72,7 @@ jobs:
       # The ESP32-S3 is Xtensa, which stock rustup cannot install.
       - uses: esp-rs/xtensa-toolchain@v1.5
         with:
+          version: 1.97.0.0
           default: true
           buildtargets: esp32s3
           ldproxy: false
@@ -80,6 +81,6 @@ jobs:
       # The actual shipping target, not a proxy for it.
       - name: Build the device crates for xtensa-esp32s3-none-elf
         run: |
-          cargo build \
+          cargo build -Z build-std=core \
             -p glucobeacon-core -p glucobeacon-proto -p glucobeacon-display \
             --no-default-features --target xtensa-esp32s3-none-elf

@@ -1,0 +1,24 @@
+[package]
+name = "glucobeacon-gateway"
+description = "WiFi-side glucobeacon node: polls Dexcom Share and relays over LoRa"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[dependencies]
+anyhow = "1.0.104"
+clap = { version = "4.6.6", features = ["derive", "env"] }
+glucobeacon-core = { version = "0.1.0", path = "../glucobeacon-core" }
+glucobeacon-dexcom = { version = "0.1.0", path = "../glucobeacon-dexcom" }
+glucobeacon-proto = { version = "0.1.0", path = "../glucobeacon-proto", features = ["udp-link"] }
+serde = { version = "1.0.229", features = ["derive"] }
+tokio = { version = "1.53.1", features = ["rt-multi-thread", "macros", "time", "signal", "net"] }
+toml = "1.1.4"
+tracing = "0.1.44"
+tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }
+
+[lints]
+workspace = true

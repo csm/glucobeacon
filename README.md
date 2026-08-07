@@ -112,6 +112,12 @@ cargo test --workspace --all-features
 cargo clippy --workspace --all-targets --all-features
 
 # Everything that will run on the device, for the real target.
+#
+# `+esp` is required, not decorative: rust-toolchain.toml pins this workspace
+# to stable, and that file beats `rustup default`. A bare `cargo` here resolves
+# to stable, which cannot target Xtensa and rejects `-Z`. And `-Z build-std` is
+# required too — the esp toolchain ships no precompiled `core` for a bare-metal
+# Xtensa target.
 cargo +esp build -Z build-std=core \
   -p glucobeacon-core -p glucobeacon-proto -p glucobeacon-display \
   --no-default-features --target xtensa-esp32s3-none-elf

@@ -74,6 +74,20 @@ cargo +esp build --release
 cargo +esp run --release        # flashes over USB and opens the monitor
 ```
 
+Each firmware crate carries its own `rust-toolchain.toml` pinning `esp`, so a
+bare `cargo` inside these directories resolves correctly. The `+esp` above is
+belt and braces.
+
+It is *not* optional when building the shared crates for a device target from
+the repository root: the workspace's `rust-toolchain.toml` pins `stable`, and a
+`rust-toolchain.toml` beats `rustup default`. Without `+esp` you get
+
+```
+error: the `-Z` flag is only accepted on the nightly channel of Cargo
+```
+
+which looks like a toolchain-version problem and is not one.
+
 The board enumerates as a CP2102 USB-to-serial bridge. On Linux you will need
 to be in the `dialout` group.
 

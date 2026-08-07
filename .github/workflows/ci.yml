@@ -70,6 +70,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       # The ESP32-S3 is Xtensa, which stock rustup cannot install.
+      # Pinned for reproducibility rather than to work around anything.
       - uses: esp-rs/xtensa-toolchain@v1.5
         with:
           version: 1.97.0.0
@@ -78,9 +79,22 @@ jobs:
           ldproxy: false
       - uses: Swatinem/rust-cache@v2
 
+      - name: Report the toolchain in use
+        run: cargo +esp --version && rustc +esp --version --verbose
+
       # The actual shipping target, not a proxy for it.
+      #
+      # `+esp` is load-bearing. The action's `default: true` sets the rustup
+      # default, but this repo has a rust-toolchain.toml pinning `stable` —
+      # and that file wins over the default. Without `+esp` a bare `cargo`
+      # resolves to stable, which cannot target Xtensa and rejects `-Z` with
+      # "the `-Z` flag is only accepted on the nightly channel of Cargo".
+      #
+      # `-Z build-std=core` is also required, not optional: the esp toolchain
+      # ships no precompiled `core` for a bare-metal Xtensa target, so it has
+      # to be built from source.
       - name: Build the device crates for xtensa-esp32s3-none-elf
         run: |
-          cargo build -Z build-std=core \
+          cargo +esp build -Z build-std=core \
             -p glucobeacon-core -p glucobeacon-proto -p glucobeacon-display \
             --no-default-features --target xtensa-esp32s3-none-elf

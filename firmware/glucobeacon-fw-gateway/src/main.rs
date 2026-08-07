@@ -33,7 +33,7 @@ use glucobeacon_gateway::config::AlarmConfig;
 use glucobeacon_gateway::schedule::PollSchedule;
 use glucobeacon_gateway::source::{Source, uplink_state};
 use glucobeacon_proto::link::SeqCounter;
-use glucobeacon_proto::radio::{RadioConfig, Region as RadioRegion};
+use glucobeacon_proto::radio::{Bandwidth, RadioConfig, Region as RadioRegion, SpreadingFactor};
 use glucobeacon_proto::{Link, Message, Packet, ReadingReport, Status};
 
 use crate::esp_http::EspTransport;
@@ -55,11 +55,29 @@ mod settings {
     /// Dexcom Share password.
     pub const DEXCOM_PASSWORD: &str = env!("GLUCOBEACON_DEXCOM_PASSWORD");
 
-    /// Which Share deployment the account lives on.
+    /// Which Share deployment the account lives on. Unrelated to the radio
+    /// region: a Dexcom account's server and a radio's band are separate
+    /// facts that happen to share a word.
     pub const DEXCOM_REGION: DexcomRegion = DexcomRegion::Us;
 
-    /// Which band to transmit in. Must match the display node.
-    pub const RADIO: RadioConfig = RadioConfig::preset(RadioRegion::Eu868);
+    /// The radio settings. These must match
+    /// `glucobeacon-fw-display`'s `board::RADIO` field for field — a mismatch
+    /// in any one of them is not a weak link but a silent one.
+    ///
+    /// SF9 at 125 kHz on the 915 MHz board. See that file for the dwell-time
+    /// constraint that comes with the narrow bandwidth in the US.
+    pub const RADIO: RadioConfig = RadioConfig {
+        spreading_factor: SpreadingFactor::Sf9,
+        bandwidth: Bandwidth::Bw125,
+        ..RadioConfig::preset(RadioRegion::Us915)
+    };
+
+    /// The largest frame the gateway may transmit, matching the display node.
+    pub const MAX_FRAME_FOR_DWELL: usize = 48;
+
+    const _: () = {
+        assert!(RADIO.check_airtime(MAX_FRAME_FOR_DWELL).is_ok());
+    };
 }
 
 fn main() -> Result<()> {

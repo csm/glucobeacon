@@ -77,6 +77,63 @@ cargo +esp run --release        # flashes over USB and opens the monitor
 The board enumerates as a CP2102 USB-to-serial bridge. On Linux you will need
 to be in the `dialout` group.
 
+## Reconciling wiring diagram v1.0
+
+Most of the diagram is encoded as-is: US915 on the 915 MHz board, buzzer on
+GPIO15 and button LED on GPIO16 (both active high, behind MOSFET modules, both
+low at boot), acknowledge button on GPIO0 active low with a pull-up, e-paper
+BUSY on GPIO4 and RST on GPIO5, and a Waveshare 7.5" 800×480 panel — which
+matches the layout the UI is already drawn for.
+
+Four things were changed, all in `glucobeacon-fw-display/src/board.rs`:
+
+1. **The e-paper SPI bus was moved off the radio.** The diagram puts e-paper
+   SCK on GPIO12, MOSI on GPIO11 and MISO on GPIO13, and lists GPIO8, 9 and 14
+   as free. On this board they are not: the SX1262 is soldered to GPIO8–14 and
+   is not on a header, so anything sharing those pins takes the radio with it.
+   The bus moved to GPIO2/3/6/7.
+2. **E-paper DC and CS moved off the OLED.** The diagram's GPIO17 and GPIO18
+   are the on-board OLED's I2C pins. Survivable — you would just lose the
+   OLED — but it is the only display available until the e-paper works.
+3. **E-paper MISO was dropped.** The Waveshare panel is write-only; its HAT
+   header has no data-out line.
+4. **GPIO22 and GPIO23 are not reserve pins.** Neither exists on an ESP32-S3.
+
+`crates/glucobeacon-display/tests/heltec_board.rs` runs the board module's own
+tests as part of the ordinary workspace test run, so a pin collision or an
+over-budget frame fails in CI rather than on the bench.
+
+### The one decision left open
+
+**GPIO0 is a strapping pin.** It is what the ESP32-S3 samples at reset to
+decide whether to enter the serial bootloader. An arcade button held down
+through a reset — a brown-out, a battery swap, a child leaning on it — leaves
+the node in download mode: dark, silent, and not alarming. For a device whose
+job is to make noise when someone is low, that is worth a second thought.
+`board::ALTERNATE_ACK_BUTTON` (GPIO47) is there if you want it. Sharing the
+on-board PRG button is genuinely convenient during bring-up, so this is a
+trade rather than a mistake.
+
+### Region and range
+
+The 915 MHz board means US915, and that has a constraint worth knowing before
+the enclosure is closed. FCC 15.247 offers two routes into 902–928 MHz:
+frequency hopping, which caps dwell time at 400 ms per transmission, or
+digital modulation, which needs at least 500 kHz of bandwidth. A
+fixed-frequency 125 kHz link is neither.
+
+The firmware uses SF9 at 125 kHz because narrow is sensitive and sensitive is
+range. At that setting a 25-byte reading is about 206 ms and the dwell ceiling
+is 66 bytes, so `MAX_FRAME_FOR_DWELL` is set to 48 with a compile-time
+assertion and a test that every message variant encodes under it. SF10 at
+125 kHz is 412 ms and does *not* fit, which is worth knowing if you are
+tempted to reach for a higher spreading factor to buy range.
+
+If the link needs to be properly compliant rather than merely brief, the
+options are 500 kHz (`Bandwidth::Bw500` — costs about 6 dB of sensitivity) or
+a real hopping scheme. That is a decision about where this is deployed, not
+one the code should make.
+
 ## What is not verified
 
 Being honest about what has and has not been checked:
@@ -89,8 +146,12 @@ Being honest about what has and has not been checked:
 - **The pin map is from the V3 reference design, not measured.** Check
   `board.rs` against the schematic for your revision before flashing. Getting a
   LoRa pin wrong usually presents as a radio that initializes and then never
-  receives anything, which is a miserable thing to debug.
-- **The region defaults to EU868.** The module covers 863–928 MHz, so nothing
-  in the hardware stops you transmitting on the wrong band for where you are.
-  Set `REGION` in `board.rs` before flashing, and see
-  `glucobeacon-proto::radio` for why the US preset uses 500 kHz.
+  receives anything, which is a miserable thing to debug. The collision checks
+  that run in CI catch pins fighting each other, not pins that are simply the
+  wrong numbers.
+- **The e-paper driver is not finished.** `epaper.rs` has the UC8179 command
+  set for the 7.5" V2 and handles the two traps — the controller wants 0 for
+  black where the framebuffer uses 1, and BUSY is low rather than high while
+  refreshing — but it has not been driven against a panel. The
+  [`epd-waveshare`](https://crates.io/crates/epd-waveshare) crate has a tested
+  `Epd7in5_V2` driver and is probably the better starting point.

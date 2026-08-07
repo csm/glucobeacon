@@ -34,7 +34,8 @@ use glucobeacon_display::embedded::{GpioButton, GpioBuzzer, GpioIndicator, Polar
 use glucobeacon_display::hal::{Button, Buzzer, Indicator};
 use glucobeacon_display::ui::{self, Frame};
 use glucobeacon_display::{PANEL_HEIGHT, PANEL_WIDTH, PanelBuffer};
-use glucobeacon_proto::Link;
+use glucobeacon_proto::link::SeqCounter;
+use glucobeacon_proto::{Link, Message, Packet};
 
 /// The panel framebuffer: 48 KB, which is far too much for the stack and is
 /// wanted for the whole life of the program. `StaticCell` gives it a `'static`
@@ -78,37 +79,46 @@ fn main() -> ! {
     )
     .expect("radio init");
 
-    // --- Panel: SPI3 to the e-ink controller. Pins per board::epaper. ---
+    // --- Panel: SPI3 to the e-ink controller. Pins per board::epaper, which
+    // are *not* the wiring diagram's: those landed on the SX1262. ---
     let panel_spi = Spi::new(
         peripherals.SPI3,
         SpiConfig::default().with_frequency(Rate::from_mhz(20)),
     )
     .expect("SPI3")
     .with_sck(peripherals.GPIO3)
-    .with_mosi(peripherals.GPIO4);
+    .with_mosi(peripherals.GPIO2);
 
-    let panel_cs = Output::new(peripherals.GPIO5, Level::High, OutputConfig::default());
+    let panel_cs = Output::new(peripherals.GPIO7, Level::High, OutputConfig::default());
     let mut panel = epaper::Panel::new(
         ExclusiveDevice::new(panel_spi, panel_cs, delay).expect("panel SPI device"),
+        // DC low = command, RST idles high, BUSY is low while refreshing.
         Output::new(peripherals.GPIO6, Level::Low, OutputConfig::default()),
-        Output::new(peripherals.GPIO7, Level::High, OutputConfig::default()),
-        Input::new(peripherals.GPIO15, InputConfig::default().with_pull(Pull::None)),
+        Output::new(peripherals.GPIO5, Level::High, OutputConfig::default()),
+        Input::new(peripherals.GPIO4, InputConfig::default().with_pull(Pull::None)),
         delay,
     );
     panel.init().expect("panel init");
 
-    // --- Buzzer, button LED, silence button. Polarity follows the wiring:
-    // the button goes to ground behind a pull-up, so it reads active-low. ---
+    // --- Buzzer, button LED, acknowledge button.
+    //
+    // Both loads are behind MOSFET modules whose SIG lines are active high.
+    // Starting them Low matters: the diagram calls for GPIO15 and GPIO16 to be
+    // low at boot, so the buzzer does not shriek through every reset.
+    //
+    // The button is an arcade switch to ground behind an internal pull-up, so
+    // it reads active low. It is on GPIO0, which is also the bootstrap pin —
+    // see board::ACK_BUTTON. ---
     let mut buzzer = GpioBuzzer::new(
-        Output::new(peripherals.GPIO45, Level::Low, OutputConfig::default()),
+        Output::new(peripherals.GPIO15, Level::Low, OutputConfig::default()),
         Polarity::ActiveHigh,
     );
     let mut led = GpioIndicator::new(
-        Output::new(peripherals.GPIO46, Level::Low, OutputConfig::default()),
+        Output::new(peripherals.GPIO16, Level::Low, OutputConfig::default()),
         Polarity::ActiveHigh,
     );
     let mut button = GpioButton::new(
-        Input::new(peripherals.GPIO47, InputConfig::default().with_pull(Pull::Up)),
+        Input::new(peripherals.GPIO0, InputConfig::default().with_pull(Pull::Up)),
         Polarity::ActiveLow,
     );
 
@@ -116,7 +126,11 @@ fn main() -> ! {
         FRAMEBUFFER.init(PanelBuffer::new(PANEL_WIDTH, PANEL_HEIGHT).expect("panel fits"));
 
     let mut app = DisplayApp::default();
+    let mut seq = SeqCounter::new();
     let booted = Instant::now();
+    // The sequence number of the newest packet, so an acknowledgement can name
+    // what it is acknowledging.
+    let mut last_seq: Option<u16> = None;
 
     loop {
         let millis = booted.elapsed().as_millis();
@@ -128,6 +142,7 @@ fn main() -> ! {
             Ok(Some(packet)) => {
                 let applied = app.handle_packet(&packet, uptime);
                 log::debug!("packet {} -> {applied:?}", packet.seq);
+                last_seq = Some(packet.seq);
             }
             Ok(None) => {}
             Err(error) => log::debug!("discarded a frame: {error}"),
@@ -147,6 +162,16 @@ fn main() -> ! {
             let tick = app.tick(uptime);
             apply(&mut buzzer, &mut led, &tick);
             repaint(&mut panel, framebuffer, &app, uptime);
+
+            // Tell the gateway somebody saw it. Best effort — the alarm is
+            // already silenced locally, and a lost acknowledgement costs
+            // nothing but a log line at the other end.
+            if let Some(acked_seq) = last_seq
+                && let Err(error) =
+                    link.send(&Packet::new(seq.take(), Message::Ack { acked_seq }))
+            {
+                log::debug!("acknowledgement not sent: {error}");
+            }
         } else if tick.redraw {
             repaint(&mut panel, framebuffer, &app, uptime);
         }

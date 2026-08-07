@@ -229,24 +229,28 @@ impl RadioConfig {
     /// SF9 either way — enough processing gain to cross a house and then some,
     /// without SF12's second-plus of airtime per frame.
     ///
-    /// The bandwidth differs, and not for radio reasons. In the EU, 125 kHz is
-    /// the standard channel and the constraint is the 1% duty cycle. In the US,
-    /// FCC 15.247 offers two routes into the 902–928 MHz band: frequency
-    /// hopping, which caps dwell time at 400 ms per channel and expects
-    /// hopping across at least 50 of them, or digital modulation, which
-    /// requires at least 500 kHz of bandwidth. A fixed-frequency link at
-    /// 125 kHz is neither. 500 kHz takes the digital modulation route and
-    /// sidesteps hopping entirely.
+    /// 125 kHz either way. It is the narrowest channel and therefore the most
+    /// sensitive, which is what buys range.
+    ///
+    /// In the EU the binding constraint is the 1% duty cycle, which a reading
+    /// every five minutes is nowhere near. In the US, FCC 15.247 offers two
+    /// routes into the 902–928 MHz band: frequency hopping, which caps dwell
+    /// time at 400 ms per transmission and expects hopping across many
+    /// channels, or digital modulation, which requires at least 500 kHz of
+    /// bandwidth. A fixed-frequency 125 kHz link is neither, so a US
+    /// deployment has a decision to make — see
+    /// [`check_airtime`](Self::check_airtime) and
+    /// [`max_payload_within_dwell`](Self::max_payload_within_dwell), and
+    /// [`Bandwidth::Bw500`] if the wide-band route is preferred to hopping.
+    ///
+    /// At SF9/125 kHz a 25-byte reading is about 206 ms, inside the dwell cap;
+    /// SF10 is not, and a maximum-size frame is not at either.
     pub const fn preset(region: Region) -> Self {
-        let bandwidth = match region {
-            Region::Eu868 => Bandwidth::Bw125,
-            Region::Us915 => Bandwidth::Bw500,
-        };
         Self {
             region,
             frequency_hz: region.default_frequency_hz(),
             spreading_factor: SpreadingFactor::Sf9,
-            bandwidth,
+            bandwidth: Bandwidth::Bw125,
             coding_rate: CodingRate::Cr45,
             preamble_symbols: 8,
             tx_power_dbm: region.max_tx_power_dbm(),
@@ -254,7 +258,14 @@ impl RadioConfig {
         }
     }
 
-    /// Checks the configuration against its region's rules.
+    /// Checks the parts of the configuration that do not depend on what is
+    /// being sent: the band and the transmit power.
+    ///
+    /// Dwell time is *not* checked here, because it depends on the payload —
+    /// see [`check_airtime`](Self::check_airtime). A 25-byte reading and a
+    /// 206-byte maximum frame are an order of magnitude apart in airtime, and
+    /// rejecting a config outright over a frame size the link never actually
+    /// sends would rule out the narrow bandwidths that give it range.
     pub fn validate(&self) -> Result<(), ConfigError> {
         let band = self.region.band_hz();
         if self.frequency_hz < band.0 || self.frequency_hz > band.1 {
@@ -272,16 +283,47 @@ impl RadioConfig {
             });
         }
 
-        if let Some(max_us) = self.region.max_dwell_time_us() {
-            let airtime = self.airtime_us(crate::frame::MAX_FRAME_LEN);
-            if airtime > max_us {
-                return Err(ConfigError::DwellTimeExceeded {
-                    airtime_us: airtime,
-                    max_us,
-                });
-            }
-        }
         Ok(())
+    }
+
+    /// Checks that a `payload_len`-byte frame is inside the region's dwell
+    /// limit.
+    ///
+    /// Call this for the largest frame the link actually sends. Under the
+    /// hopping route into the US band the cap is 400 ms per transmission, and
+    /// exceeding it is not something the radio will tell you about.
+    pub const fn check_airtime(&self, payload_len: usize) -> Result<(), ConfigError> {
+        match self.region.max_dwell_time_us() {
+            Some(max_us) => {
+                let airtime_us = self.airtime_us(payload_len);
+                if airtime_us > max_us {
+                    Err(ConfigError::DwellTimeExceeded { airtime_us, max_us })
+                } else {
+                    Ok(())
+                }
+            }
+            None => Ok(()),
+        }
+    }
+
+    /// The largest frame that fits the region's dwell limit, if it has one.
+    ///
+    /// `None` where the region does not cap dwell time. `Some(0)` means not
+    /// even an empty frame fits, which makes the configuration useless.
+    pub fn max_payload_within_dwell(&self) -> Option<usize> {
+        self.region.max_dwell_time_us()?;
+        // Airtime rises monotonically with payload, so walking down from the
+        // protocol maximum finds the largest that fits.
+        let mut len = crate::frame::MAX_FRAME_LEN;
+        loop {
+            if self.check_airtime(len).is_ok() {
+                return Some(len);
+            }
+            if len == 0 {
+                return Some(0);
+            }
+            len -= 1;
+        }
     }
 
     /// Symbol duration in microseconds.
@@ -461,44 +503,71 @@ mod tests {
         assert_eq!(cfg.validate(), Ok(()));
         assert_eq!(cfg.min_transmit_interval_us(READING_FRAME), None);
         assert!(cfg.fits_duty_cycle(READING_FRAME, 1));
+    }
 
-        // SF12 exceeds the 400 ms dwell limit for a full-size frame.
-        let slow = RadioConfig {
-            spreading_factor: SpreadingFactor::Sf12,
+    #[test]
+    fn dwell_time_is_a_question_about_a_payload_not_a_config() {
+        // A reading fits at SF9/125 kHz; a maximum-size frame does not. A
+        // config check that could not tell those apart would rule out the
+        // narrow bandwidth the link needs for range.
+        let cfg = RadioConfig::preset(Region::Us915);
+        assert_eq!(cfg.bandwidth, Bandwidth::Bw125);
+        assert_eq!(cfg.validate(), Ok(()));
+
+        assert_eq!(cfg.check_airtime(READING_FRAME), Ok(()));
+        assert!(matches!(
+            cfg.check_airtime(crate::frame::MAX_FRAME_LEN),
+            Err(ConfigError::DwellTimeExceeded { .. })
+        ));
+    }
+
+    #[test]
+    fn sf10_at_125_khz_just_misses_the_dwell_cap() {
+        // 412 ms for a reading, against a 400 ms limit. Worth knowing before
+        // reaching for a higher spreading factor to buy range.
+        let cfg = RadioConfig {
+            spreading_factor: SpreadingFactor::Sf10,
             ..RadioConfig::preset(Region::Us915)
         };
         assert!(matches!(
-            slow.validate(),
+            cfg.check_airtime(READING_FRAME),
             Err(ConfigError::DwellTimeExceeded { .. })
         ));
     }
 
     #[test]
-    fn the_us_preset_takes_the_wide_band_route_not_the_hopping_one() {
-        // A fixed-frequency 125 kHz link fits neither of FCC 15.247's routes
-        // into the band. 500 kHz qualifies as digital modulation, which needs
-        // no hopping and has no dwell limit to trip over.
-        let cfg = RadioConfig::preset(Region::Us915);
-        assert_eq!(cfg.bandwidth, Bandwidth::Bw500);
-        assert!(cfg.bandwidth.hertz() >= 500_000);
-        assert_eq!(cfg.validate(), Ok(()));
-
-        // The same spreading factor at 125 kHz would not pass.
-        let narrow = RadioConfig {
-            bandwidth: Bandwidth::Bw125,
-            ..cfg
+    fn the_wide_band_route_carries_a_full_frame() {
+        // 500 kHz qualifies as digital modulation under 15.247, which needs no
+        // hopping — at the cost of about 6 dB of sensitivity.
+        let cfg = RadioConfig {
+            bandwidth: Bandwidth::Bw500,
+            ..RadioConfig::preset(Region::Us915)
         };
-        assert!(matches!(
-            narrow.validate(),
-            Err(ConfigError::DwellTimeExceeded { .. })
-        ));
+        assert_eq!(cfg.check_airtime(crate::frame::MAX_FRAME_LEN), Ok(()));
     }
 
     #[test]
-    fn the_eu_preset_stays_narrow_where_the_duty_cycle_is_the_constraint() {
+    fn the_largest_legal_frame_is_reported() {
+        let narrow = RadioConfig::preset(Region::Us915);
+        let limit = narrow.max_payload_within_dwell().expect("us caps dwell");
+        assert!(limit >= READING_FRAME, "a reading must fit, got {limit}");
+        assert!(limit < crate::frame::MAX_FRAME_LEN);
+        assert_eq!(narrow.check_airtime(limit), Ok(()));
+        assert!(narrow.check_airtime(limit + 1).is_err());
+
+        // The EU has no dwell limit at all.
+        assert_eq!(
+            RadioConfig::preset(Region::Eu868).max_payload_within_dwell(),
+            None
+        );
+    }
+
+    #[test]
+    fn the_eu_preset_is_bounded_by_its_duty_cycle_instead() {
         let cfg = RadioConfig::preset(Region::Eu868);
         assert_eq!(cfg.bandwidth, Bandwidth::Bw125);
-        assert_eq!(cfg.validate(), Ok(()), "no dwell limit applies in the EU");
+        assert_eq!(cfg.validate(), Ok(()));
+        assert_eq!(cfg.check_airtime(crate::frame::MAX_FRAME_LEN), Ok(()));
     }
 
     #[test]

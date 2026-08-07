@@ -48,17 +48,32 @@ The original hand-drawn v1.0 is still in the repository root as
 `4A1F9E18-7F54-4965-BDE3-941843675C4B.png`, and the "Changed from v1.0" note on
 the diagram lists what moved and why.
 
+## Strapping pins
+
+The ESP32-S3 samples GPIO0, 3, 45 and 46 at reset. Drive one from outside and
+you do not get a misbehaving peripheral, you get a board that does not start —
+and on this product that means dark, silent, and not alarming, with nothing to
+say why.
+
+v1.0 put the acknowledge button on GPIO0, which parallels the on-board PRG
+button and is genuinely convenient for bring-up. It is also the boot-mode pin:
+a button held down through a reset — a brown-out, a battery swap, a child
+leaning on the enclosure — leaves the node in its serial bootloader until
+somebody power-cycles it *without* touching the button. Nobody would guess
+that from the symptom.
+
+v1.2 moves it to GPIO47, and moves the e-Paper clock off GPIO3 while it is at
+it. GPIO3 only selects the JTAG signal source, so it was never dangerous, but
+a bus line has no pull at reset and there is no reason to leave a strap
+floating.
+
+Both the firmware tests and `generate.py` now reject any external pin that
+lands on a strap, so this cannot come back quietly. `board::PRG_BUTTON` is
+still GPIO0 if a spare input helps on the bench.
+
 ## Still open
 
-**GPIO0 for the acknowledge button is a strapping pin.** Held down through a
-reset — a brown-out, a battery swap, a child leaning on the enclosure — the
-ESP32-S3 comes up in its serial bootloader: dark, silent, not alarming. It is
-convenient because it parallels the on-board PRG button, so this is a real
-trade rather than a mistake, but for a device whose whole job is to make noise
-when someone is low it is worth a second thought.
-`board::ALTERNATE_ACK_BUTTON` is GPIO47 if the trade is not worth it.
-
 **The pin numbers are from the V3 reference design, not measured.** The checks
-above catch pins fighting each other. They cannot catch a pin that is simply
-the wrong number — verify against the schematic for your board revision before
-the first flash.
+above catch pins fighting each other, landing on the radio, or sitting on a
+strap. They cannot catch a pin that is simply the wrong number — verify
+against the schematic for your board revision before the first flash.

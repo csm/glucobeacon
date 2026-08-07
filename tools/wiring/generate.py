@@ -169,7 +169,8 @@ RIGHT = [
         "Acknowledge button",
         "momentary, to GND",
         [Pin("SW", "ACK_BUTTON", "active low, pull-up", "ctrl")],
-        warn="STRAPPING PIN. Held at reset, the board enters the bootloader: dark and silent.",
+        warn="Not GPIO0: held through a reset, a strapping pin leaves the board "
+             "in its bootloader — dark, silent, not alarming.",
     ),
 ]
 
@@ -192,6 +193,23 @@ NET_COLOURS = {
     "i2c": "#0f766e",
     "ctrl": "#b45309",
 }
+
+POWER_TEXT = (
+    "USB-C 5 V (2 A) and a 3.7 V LiPo meet at a power-path / OR-ing stage. "
+    "The e-Paper HAT and both MOSFET modules run from 5 V; the Heltec regulates "
+    "its own 3.3 V. All grounds common. Do not power the board without the "
+    "antenna attached."
+)
+
+CHANGES_TEXT = (
+    "v1.1 — e-Paper SCK/MOSI/MISO were on GPIO12/11/13 and DC/CS on GPIO17/18: the "
+    "first three are the SX1262, the last two the on-board OLED, so the bus moved to "
+    "free pins. e-Paper MISO dropped, the panel is write-only. GPIO22/23 were listed "
+    "as reserve; neither exists on an ESP32-S3.   "
+    "v1.2 — the acknowledge button moved off GPIO0 and the e-Paper clock off GPIO3. "
+    "Both are strapping pins: held or pulled at reset they change how the chip boots, "
+    "and a board stuck in its bootloader is dark, silent and not alarming."
+)
 
 INK = "#111827"
 MUTED = "#6b7280"
@@ -232,6 +250,26 @@ def row_y(block: Block, index: int) -> float:
     return block.y0 + 34 + index * ROW_H + ROW_H / 2
 
 
+def footer_layout(top: float) -> tuple[dict[str, float], list[str], list[str], float]:
+    """Where each footer line goes, and how far down the last one reaches.
+
+    Measured rather than assumed: the v1.2 note is longer than the v1.1 one was,
+    and a hardcoded footer height silently cropped its last line.
+    """
+    power = wrap(POWER_TEXT, 118)
+    changes = wrap(CHANGES_TEXT, 128)
+    y = {"rule": top, "power_head": top + 22, "power": top + 44}
+    after_power = y["power"] + (len(power) - 1) * 16
+    y["changes_head"] = after_power + 38
+    y["changes"] = y["changes_head"] + 20
+    bottom = y["changes"] + (len(changes) - 1) * 15 + 28
+    return y, power, changes, bottom
+
+
+def footer_top() -> float:
+    return MCU_Y + MCU_H + 62
+
+
 def fit_to_content() -> None:
     """Lay both columns out, then size the MCU and the canvas around them.
 
@@ -246,7 +284,8 @@ def fit_to_content() -> None:
 
     content_bottom = max(LEFT[-1].y1, RIGHT[-1].y1)
     MCU_H = content_bottom - MCU_Y + 20
-    H = int(MCU_Y + MCU_H + 240)
+    *_, footer_bottom = footer_layout(footer_top())
+    H = int(footer_bottom)
 
 
 # ---------------------------------------------------------------- svg
@@ -471,27 +510,16 @@ def build_svg(pins: dict[str, int], radio: dict[str, str], version: str) -> str:
     svg.text(sx, ny + 12, "26-32 are the SiP flash.", size=9.5, fill=MUTED)
 
     # ---- footer: power + provenance
-    fy = H - 150
-    svg.line(48, fy - 18, W - 48, fy - 18, RULE, 1.4)
-    svg.text(48, fy + 4, "Power", size=14, weight="bold")
-    power = (
-        "USB-C 5 V (2 A) and a 3.7 V LiPo meet at a power-path / OR-ing stage. "
-        "The e-Paper HAT and both MOSFET modules run from 5 V; the Heltec regulates "
-        "its own 3.3 V. All grounds common. Do not power the board without the "
-        "antenna attached."
-    )
-    for offset, line in enumerate(wrap(power, 118)):
-        svg.text(48, fy + 26 + offset * 16, line, size=11)
+    y, power_lines, change_lines, _ = footer_layout(footer_top())
+    svg.line(48, y["rule"], W - 48, y["rule"], RULE, 1.4)
+    svg.text(48, y["power_head"], "Power", size=14, weight="bold")
+    for offset, line in enumerate(power_lines):
+        svg.text(48, y["power"] + offset * 16, line, size=11)
 
-    svg.text(48, fy + 82, "Changed from v1.0", size=13, weight="bold", fill="#9a3412")
-    changes = (
-        "e-Paper SCK/MOSI/MISO were on GPIO12/11/13 and DC/CS on GPIO17/18 — the first "
-        "three are the SX1262, the last two the on-board OLED, so the bus moved to free "
-        "pins. e-Paper MISO dropped: the panel is write-only. GPIO22/23 were listed as "
-        "reserve; neither exists on an ESP32-S3."
-    )
-    for offset, line in enumerate(wrap(changes, 128)):
-        svg.text(48, fy + 102 + offset * 15, line, size=10.5, fill="#9a3412")
+    svg.text(48, y["changes_head"], "Changed from the hand-drawn v1.0", size=13,
+             weight="bold", fill="#9a3412")
+    for offset, line in enumerate(change_lines):
+        svg.text(48, y["changes"] + offset * 15, line, size=10.5, fill="#9a3412")
 
     return svg.render()
 
@@ -572,9 +600,11 @@ def build_ascii(pins: dict[str, int], radio: dict[str, str], version: str) -> st
     add("  Drive the buzzer and LED LOW at boot, or the buzzer shrieks through resets.")
     add("  An SFM-27-W is an ACTIVE buzzer: on/off, no PWM needed.")
     add("")
-    add(f"  !! GPIO{pins['ACK_BUTTON']} is a STRAPPING PIN. Held down through a reset, the board")
-    add("     enters the serial bootloader: dark, silent, not alarming. A non-strapping")
-    add(f"     alternative is GPIO{pins['ALTERNATE_ACK_BUTTON']}.")
+    add(f"  The button is on GPIO{pins['ACK_BUTTON']}, deliberately NOT GPIO{pins['PRG_BUTTON']}.")
+    add("  GPIO0/3/45/46 are sampled at reset. A button held down through a reset on")
+    add("  GPIO0 leaves the board in its serial bootloader: dark, silent, not alarming,")
+    add("  with nothing to say what happened. The on-board PRG button is still on")
+    add(f"  GPIO{pins['PRG_BUTTON']} if a spare input helps during bring-up.")
     add("")
     add("-" * 78)
     add("Radio link (both ends must match exactly)")
@@ -603,6 +633,14 @@ def build_ascii(pins: dict[str, int], radio: dict[str, str], version: str) -> st
     add("  * e-Paper MISO dropped entirely: the panel is write-only.")
     add("  * GPIO22/23 were listed as reserve. Neither exists on an ESP32-S3.")
     add("")
+    add("Changed in v1.2")
+    add("-" * 78)
+    add("  * Acknowledge button moved GPIO0 -> GPIO47, and the e-Paper clock")
+    add("    GPIO3 -> GPIO38. Both were strapping pins: sampled at reset, they change")
+    add("    how the chip boots. GPIO0 is the dangerous one - a held button becomes a")
+    add("    board that never starts. GPIO3 only selects the JTAG source, but a bus")
+    add("    line has no pull at reset and there is no reason to leave a strap floating.")
+    add("")
     return "\n".join(line.rstrip() for line in out) + "\n"
 
 
@@ -630,6 +668,13 @@ def check(pins: dict[str, int]) -> list[str]:
         if key.startswith("epaper.") and pins.get(key) in radio_pins:
             problems.append(f"{key} is GPIO{pins[key]}, which belongs to the SX1262")
 
+    straps = {0, 3, 45, 46}  # boot mode, JTAG source, flash voltage
+    for key in wanted:
+        if pins.get(key) in straps:
+            problems.append(
+                f"{key} is GPIO{pins[key]}, which the ESP32-S3 samples at reset"
+            )
+
     for key, number in pins.items():
         if 22 <= number <= 25:
             problems.append(f"{key} is GPIO{number}, which does not exist on an ESP32-S3")
@@ -643,7 +688,7 @@ def main() -> int:
     source = BOARD_RS.read_text()
     pins = parse_board(source)
     radio = parse_radio(source)
-    version = "v1.1"
+    version = "v1.2"
 
     problems = check(pins)
     if problems:

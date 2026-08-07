@@ -124,16 +124,19 @@ Four things were changed, all in `glucobeacon-fw-display/src/board.rs`:
 tests as part of the ordinary workspace test run, so a pin collision or an
 over-budget frame fails in CI rather than on the bench.
 
-### The one decision left open
+### Strapping pins (resolved in v1.2)
 
-**GPIO0 is a strapping pin.** It is what the ESP32-S3 samples at reset to
-decide whether to enter the serial bootloader. An arcade button held down
-through a reset — a brown-out, a battery swap, a child leaning on it — leaves
-the node in download mode: dark, silent, and not alarming. For a device whose
-job is to make noise when someone is low, that is worth a second thought.
-`board::ALTERNATE_ACK_BUTTON` (GPIO47) is there if you want it. Sharing the
-on-board PRG button is genuinely convenient during bring-up, so this is a
-trade rather than a mistake.
+The ESP32-S3 samples GPIO0, 3, 45 and 46 at reset. The acknowledge button has
+moved from GPIO0 to GPIO47, and the e-Paper clock from GPIO3 to GPIO38.
+
+GPIO0 is the one that mattered. It selects boot mode, so a button held down
+through a reset left the node sitting in its serial bootloader — dark, silent,
+not alarming, and giving no hint why. GPIO3 only selects the JTAG source and
+was never dangerous, but a bus line has no pull at reset.
+
+`board::STRAPPING_PINS` lists all four, and both the board tests and the
+wiring generator reject anything external that lands on one.
+`board::PRG_BUTTON` keeps GPIO0 available for bring-up.
 
 ### Region and range
 

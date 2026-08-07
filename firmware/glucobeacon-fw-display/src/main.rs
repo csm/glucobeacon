@@ -86,7 +86,7 @@ fn main() -> ! {
         SpiConfig::default().with_frequency(Rate::from_mhz(20)),
     )
     .expect("SPI3")
-    .with_sck(peripherals.GPIO3)
+    .with_sck(peripherals.GPIO38)
     .with_mosi(peripherals.GPIO2);
 
     let panel_cs = Output::new(peripherals.GPIO7, Level::High, OutputConfig::default());
@@ -107,8 +107,9 @@ fn main() -> ! {
     // low at boot, so the buzzer does not shriek through every reset.
     //
     // The button is an arcade switch to ground behind an internal pull-up, so
-    // it reads active low. It is on GPIO0, which is also the bootstrap pin —
-    // see board::ACK_BUTTON. ---
+    // it reads active low. GPIO47, not GPIO0: a button held through a reset on
+    // GPIO0 leaves the board in its bootloader, dark and silent. See
+    // board::STRAPPING_PINS. ---
     let mut buzzer = GpioBuzzer::new(
         Output::new(peripherals.GPIO15, Level::Low, OutputConfig::default()),
         Polarity::ActiveHigh,
@@ -118,7 +119,7 @@ fn main() -> ! {
         Polarity::ActiveHigh,
     );
     let mut button = GpioButton::new(
-        Input::new(peripherals.GPIO0, InputConfig::default().with_pull(Pull::Up)),
+        Input::new(peripherals.GPIO47, InputConfig::default().with_pull(Pull::Up)),
         Polarity::ActiveLow,
     );
 

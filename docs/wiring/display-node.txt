@@ -1,5 +1,5 @@
 GlucoBeacon - Display Node
-Heltec WiFi LoRa 32 V3 (ESP32-S3FN8 + SX1262) - wiring v1.1
+Heltec WiFi LoRa 32 V3 (ESP32-S3FN8 + SX1262) - wiring v1.2
 
 Generated from firmware/glucobeacon-fw-display/src/board.rs by
 tools/wiring/generate.py. Do not edit by hand.
@@ -56,7 +56,7 @@ SSD1306 OLED, 128x64         [FIXED - soldered to the module]
 Waveshare 7.5in e-Paper HAT (800x480 mono, UC8179, SPI3)
 ------------------------------------------------------------------------------
   CS       GPIO7   chip select
-  SCK      GPIO3
+  SCK     GPIO38
   DIN      GPIO2   MOSI; panel is write-only
   DC       GPIO6   low = command
   RST      GPIO5   active low
@@ -70,13 +70,15 @@ Buzzer, button LED, acknowledge button
 ------------------------------------------------------------------------------
   BUZZ    GPIO15   MOSFET #1 SIG, active high
   LED     GPIO16   MOSFET #2 SIG, active high
-  SW       GPIO0   to GND, active low, internal pull-up
+  SW      GPIO47   to GND, active low, internal pull-up
   Drive the buzzer and LED LOW at boot, or the buzzer shrieks through resets.
   An SFM-27-W is an ACTIVE buzzer: on/off, no PWM needed.
 
-  !! GPIO0 is a STRAPPING PIN. Held down through a reset, the board
-     enters the serial bootloader: dark, silent, not alarming. A non-strapping
-     alternative is GPIO47.
+  The button is on GPIO47, deliberately NOT GPIO0.
+  GPIO0/3/45/46 are sampled at reset. A button held down through a reset on
+  GPIO0 leaves the board in its serial bootloader: dark, silent, not alarming,
+  with nothing to say what happened. The on-board PRG button is still on
+  GPIO0 if a spare input helps during bring-up.
 
 ------------------------------------------------------------------------------
 Radio link (both ends must match exactly)
@@ -104,4 +106,12 @@ Changed from wiring diagram v1.0
   * e-Paper DC/CS were GPIO17/18 - those are the on-board OLED's I2C pins.
   * e-Paper MISO dropped entirely: the panel is write-only.
   * GPIO22/23 were listed as reserve. Neither exists on an ESP32-S3.
+
+Changed in v1.2
+------------------------------------------------------------------------------
+  * Acknowledge button moved GPIO0 -> GPIO47, and the e-Paper clock
+    GPIO3 -> GPIO38. Both were strapping pins: sampled at reset, they change
+    how the chip boots. GPIO0 is the dangerous one - a held button becomes a
+    board that never starts. GPIO3 only selects the JTAG source, but a bus
+    line has no pull at reset and there is no reason to leave a strap floating.
 

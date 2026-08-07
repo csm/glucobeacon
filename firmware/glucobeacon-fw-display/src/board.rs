@@ -102,8 +102,14 @@ pub mod oled {
 ///
 /// Write-only: the panel has no data-out line, so there is no MISO here.
 pub mod epaper {
-    /// SPI clock. Diagram says 12; that is the SX1262's reset.
-    pub const SCK: u8 = 3;
+    /// SPI clock.
+    ///
+    /// Diagram says 12; that is the SX1262's reset. Not GPIO3 either, which is
+    /// a strapping pin (JTAG signal source) — nothing like as dangerous as
+    /// GPIO0, but a bus line has no pull at reset and there is no reason to
+    /// leave a strap floating. GPIO38 and up are also clear of the pins an
+    /// octal-PSRAM S3 would claim, so this survives a module swap.
+    pub const SCK: u8 = 38;
     /// SPI data in to the panel. Diagram says 11; that is the SX1262's MISO.
     pub const MOSI: u8 = 2;
     /// Chip select. Diagram says 18; that is the OLED's I2C clock.
@@ -139,21 +145,37 @@ pub const BUTTON_LED: u8 = 16;
 
 /// The acknowledge button. Active low, with an internal pull-up.
 ///
-/// # This is a strapping pin
+/// Deliberately *not* GPIO0. The wiring diagram put it there because it
+/// parallels the on-board PRG button, which is convenient — but GPIO0 is what
+/// the ESP32-S3 samples at reset to choose between booting and the serial
+/// bootloader. A button held down through a reset (a brown-out, a battery
+/// swap, a child leaning on the enclosure) would leave the node in download
+/// mode: dark, silent, and not alarming, until someone power-cycles it without
+/// touching the button. There is no indication of what happened, and the
+/// person best placed to notice is the one the alarm was for.
 ///
-/// GPIO0 is what the ESP32-S3 samples at reset to decide whether to enter the
-/// serial bootloader. A button held down while the board resets — a brown-out,
-/// a battery swap, a child leaning on it — leaves the node sitting in download
-/// mode, dark and silent, until someone power-cycles it without touching the
-/// button.
-///
-/// It is convenient because it parallels the on-board PRG button, which makes
-/// bring-up easy. For a device whose job is to make noise when someone is low,
-/// consider moving it to [`ALTERNATE_ACK_BUTTON`] before this leaves the bench.
-pub const ACK_BUTTON: u8 = 0;
+/// GPIO47 is not sampled at reset and has no other role on this module.
+pub const ACK_BUTTON: u8 = 47;
 
-/// A non-strapping alternative for the acknowledge button.
-pub const ALTERNATE_ACK_BUTTON: u8 = 47;
+/// The on-board PRG button.
+///
+/// Useful during bring-up, when a spare input is wanted and a wedged board is
+/// a keypress away from being fixed. Never wire the product's button here —
+/// see [`STRAPPING_PINS`].
+pub const PRG_BUTTON: u8 = 0;
+
+/// Pins the ESP32-S3 samples at reset.
+///
+/// Driving one of these from the outside changes how the chip boots, and the
+/// symptom is not "this peripheral misbehaves" but "the board is dead":
+///
+/// * GPIO0 and GPIO46 select boot mode. Held low, the chip waits in its serial
+///   bootloader instead of running.
+/// * GPIO45 selects the flash voltage. Strapped wrong, the flash is driven at
+///   the wrong rail and nothing boots at all.
+/// * GPIO3 selects the JTAG signal source. Harmless by comparison, but there
+///   is no reason to leave a strap floating on a bus line.
+pub const STRAPPING_PINS: [u8; 4] = [0, 3, 45, 46];
 
 #[cfg(test)]
 mod tests {
@@ -161,7 +183,7 @@ mod tests {
 
     /// Every pin this firmware drives or reads, with a name for the failure
     /// message.
-    const ASSIGNED: [(&str, u8); 22] = [
+    const ASSIGNED: [(&str, u8); 23] = [
         ("lora.sck", lora::SCK),
         ("lora.mosi", lora::MOSI),
         ("lora.miso", lora::MISO),
@@ -184,6 +206,7 @@ mod tests {
         ("vbat_enable", VBAT_ENABLE),
         ("buzzer", BUZZER),
         ("button_led", BUTTON_LED),
+        ("ack_button", ACK_BUTTON),
     ];
 
     #[test]
@@ -307,11 +330,28 @@ mod tests {
     }
 
     #[test]
-    fn the_acknowledge_button_is_flagged_as_a_strapping_pin() {
-        // Not a bug, but a decision that should be made deliberately: holding
-        // GPIO0 at reset drops the board into the bootloader.
-        assert_eq!(ACK_BUTTON, 0);
-        assert_ne!(ALTERNATE_ACK_BUTTON, 0);
-        assert!(!ASSIGNED.iter().any(|(_, p)| *p == ALTERNATE_ACK_BUTTON));
+    fn nothing_external_sits_on_a_strapping_pin() {
+        // The failure this prevents does not look like a wiring fault. The
+        // board comes up in its bootloader — dark, silent, not alarming — and
+        // stays there until someone power-cycles it without touching the
+        // button. Worth a test rather than a comment.
+        for (name, pin) in ASSIGNED {
+            assert!(
+                !STRAPPING_PINS.contains(&pin),
+                "{name} is GPIO{pin}, which the S3 samples at reset"
+            );
+        }
+        assert!(
+            !STRAPPING_PINS.contains(&ACK_BUTTON),
+            "the acknowledge button must not be a strapping pin"
+        );
+    }
+
+    #[test]
+    fn the_acknowledge_button_moved_off_gpio0() {
+        // Wiring diagram v1.0 had it on GPIO0, alongside the PRG button.
+        assert_eq!(ACK_BUTTON, 47);
+        assert_eq!(PRG_BUTTON, 0, "PRG stays available for bring-up");
+        assert!(STRAPPING_PINS.contains(&PRG_BUTTON));
     }
 }

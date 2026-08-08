@@ -30,6 +30,8 @@ const MARGIN: i32 = 16;
 const HEADER_RULE_Y: i32 = 44;
 const READING_TOP: i32 = 62;
 const DIGIT_HEIGHT: u32 = 190;
+/// Top-left of the first big glyph, shared by the reading and the self-test.
+const READING_ORIGIN: Point = Point::new(MARGIN + 24, READING_TOP);
 const SUBLINE_Y: i32 = 296;
 const BANNER_TOP: i32 = 316;
 const BANNER_HEIGHT: u32 = 52;
@@ -112,11 +114,90 @@ where
     Ok(())
 }
 
+/// One frame of the panel's self-test.
+#[derive(Copy, Clone, PartialEq, Eq, Debug)]
+pub enum DemoStep {
+    /// Every digit cell lit with the same digit.
+    Digit(u8),
+    /// One of the words a pegged sensor shows.
+    Word(glyphs::Word),
+}
+
+/// The self-test sequence: every digit, then both pegged-sensor words.
+///
+/// Each digit fills all three cells rather than being shown once, so one pass
+/// lights every segment of every cell — a dead column shows up as a gap that
+/// walks down the panel instead of hiding in whichever cell never got a `8`.
+pub const DEMO: [DemoStep; 12] = [
+    DemoStep::Digit(0),
+    DemoStep::Digit(1),
+    DemoStep::Digit(2),
+    DemoStep::Digit(3),
+    DemoStep::Digit(4),
+    DemoStep::Digit(5),
+    DemoStep::Digit(6),
+    DemoStep::Digit(7),
+    DemoStep::Digit(8),
+    DemoStep::Digit(9),
+    DemoStep::Word(glyphs::Word::High),
+    DemoStep::Word(glyphs::Word::Low),
+];
+
+/// How many cells a [`DemoStep::Digit`] fills — the width of a reading.
+const DEMO_CELLS: u32 = 3;
+
+/// Draws one step of the self-test.
+///
+/// Takes a step rather than a [`Frame`]: there is no state behind a self-test,
+/// and inventing a [`DisplayState`] to carry one would put a number on the
+/// panel that could be mistaken for a reading. The header says `self-test` for
+/// the same reason.
+pub fn render_demo<D>(target: &mut D, step: DemoStep) -> Result<(), D::Error>
+where
+    D: DrawTarget<Color = BinaryColor>,
+{
+    target.clear(BinaryColor::Off)?;
+    draw_header_chrome(target, "self-test")?;
+
+    let style = DigitStyle::with_height(DIGIT_HEIGHT);
+    match step {
+        DemoStep::Digit(digit) => {
+            for cell in 0..DEMO_CELLS {
+                let x = READING_ORIGIN.x + (cell * (style.width + style.spacing)) as i32;
+                glyphs::draw_digit(
+                    target,
+                    digit,
+                    Point::new(x, READING_ORIGIN.y),
+                    &style,
+                    BinaryColor::On,
+                )?;
+            }
+        }
+        DemoStep::Word(word) => {
+            glyphs::draw_word(target, word, READING_ORIGIN, &style, BinaryColor::On)?;
+        }
+    }
+    Ok(())
+}
+
 fn draw_header<D>(target: &mut D, frame: &Frame<'_>) -> Result<(), D::Error>
 where
     D: DrawTarget<Color = BinaryColor>,
 {
-    let bold = MonoTextStyle::new(TITLE_FONT, BinaryColor::On);
+    let mut status: String<64> = String::new();
+    let _ = write!(status, "link {}", link_age(frame));
+    let _ = write!(status, "  {SEPARATOR}  {}", frame.state.uplink().label());
+    draw_header_chrome(target, &status)
+}
+
+/// The title, a right-aligned status line, and the rule under both.
+///
+/// Split out so the self-test can wear the same header without having to invent
+/// a [`Frame`] to derive a status from.
+fn draw_header_chrome<D>(target: &mut D, status: &str) -> Result<(), D::Error>
+where
+    D: DrawTarget<Color = BinaryColor>,
+{
     let left = TextStyleBuilder::new()
         .alignment(Alignment::Left)
         .baseline(Baseline::Middle)
@@ -126,13 +207,16 @@ where
         .baseline(Baseline::Middle)
         .build();
 
-    Text::with_text_style(title(), Point::new(MARGIN, 22), bold, left).draw(target)?;
-
-    let mut status: String<64> = String::new();
-    let _ = write!(status, "link {}", link_age(frame));
-    let _ = write!(status, "  {SEPARATOR}  {}", frame.state.uplink().label());
     Text::with_text_style(
-        &status,
+        title(),
+        Point::new(MARGIN, 22),
+        MonoTextStyle::new(TITLE_FONT, BinaryColor::On),
+        left,
+    )
+    .draw(target)?;
+
+    Text::with_text_style(
+        status,
         Point::new(PANEL_WIDTH as i32 - MARGIN, 22),
         MonoTextStyle::new(STATUS_FONT, BinaryColor::On),
         right,
@@ -174,9 +258,18 @@ where
     D: DrawTarget<Color = BinaryColor>,
 {
     let style = DigitStyle::with_height(DIGIT_HEIGHT);
-    let origin = Point::new(MARGIN + 24, READING_TOP);
+    let origin = READING_ORIGIN;
 
     let width = match frame.state.latest() {
+        // A pegged sensor's number is its clamp, not a measurement: a G6 at the
+        // top of its range reports 400 whether the truth is 401 or 600. Saying
+        // `HI` is what the receiver does and is the honest reading of it.
+        Some(reading) if reading.glucose.is_sensor_high() => {
+            glyphs::draw_word(target, glyphs::Word::High, origin, &style, BinaryColor::On)?
+        }
+        Some(reading) if reading.glucose.is_sensor_low() => {
+            glyphs::draw_word(target, glyphs::Word::Low, origin, &style, BinaryColor::On)?
+        }
         Some(reading) => glyphs::draw_number(
             target,
             reading.glucose.mgdl(),
@@ -686,6 +779,74 @@ mod tests {
             canvas.ink_in(reading_area) > canvas.ink_in(header_area) * 3,
             "the number should be the loudest thing on the panel"
         );
+    }
+
+    /// The band the big glyphs occupy.
+    fn reading_area() -> Rectangle {
+        Rectangle::new(
+            Point::new(0, READING_TOP),
+            Size::new(PANEL_WIDTH, DIGIT_HEIGHT),
+        )
+    }
+
+    #[test]
+    fn a_pegged_sensor_gets_a_word_rather_than_its_clamp_value() {
+        // 400 is the top of a G6's range, so it means "at least 400" rather
+        // than 400 — and 40 likewise at the bottom.
+        for (pegged, in_range) in [(400, 399), (40, 41)] {
+            let word = draw(&frame(&state_with_readings(&[(pegged, 1_000)]), None));
+            let number = draw(&frame(&state_with_readings(&[(in_range, 1_000)]), None));
+            assert_ne!(
+                word.ink_in(reading_area()),
+                number.ink_in(reading_area()),
+                "{pegged} drew the same thing as {in_range}"
+            );
+        }
+
+        // And the two words differ from each other.
+        let high = draw(&frame(&state_with_readings(&[(400, 1_000)]), None));
+        let low = draw(&frame(&state_with_readings(&[(40, 1_000)]), None));
+        assert_ne!(high.ink_in(reading_area()), low.ink_in(reading_area()));
+    }
+
+    #[test]
+    fn the_self_test_lights_every_digit_and_both_words() {
+        assert_eq!(DEMO.len(), 12, "ten digits and two words");
+
+        let mut inks = Vec::new();
+        for step in DEMO {
+            let mut canvas = Canvas::new();
+            render_demo(&mut canvas, step).expect("render");
+            let ink = canvas.ink_in(reading_area());
+            assert!(ink > 0, "{step:?} drew nothing where the glyphs go");
+            inks.push(ink);
+        }
+
+        // `8` fills every segment of every cell, so it is the heaviest frame.
+        let heaviest = inks
+            .iter()
+            .enumerate()
+            .max_by_key(|(_, ink)| **ink)
+            .map(|(index, _)| DEMO[index]);
+        assert_eq!(heaviest, Some(DemoStep::Digit(8)));
+    }
+
+    #[test]
+    fn the_self_test_says_what_it_is_rather_than_looking_like_a_reading() {
+        let mut canvas = Canvas::new();
+        render_demo(&mut canvas, DemoStep::Digit(8)).expect("render");
+
+        // The header is drawn, so the frame is not a bare test pattern...
+        let header = Rectangle::new(Point::zero(), Size::new(PANEL_WIDTH, 46));
+        assert!(canvas.ink_in(header) > 0, "no header on the self-test");
+
+        // ...and nothing is drawn below the glyphs, where a real frame puts the
+        // subline and graph that would make this look like live data.
+        let below = Rectangle::new(
+            Point::new(0, SUBLINE_Y - 8),
+            Size::new(PANEL_WIDTH, PANEL_HEIGHT - (SUBLINE_Y - 8) as u32),
+        );
+        assert_eq!(canvas.ink_in(below), 0, "the self-test drew a subline");
     }
 
     #[test]

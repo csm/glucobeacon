@@ -72,6 +72,23 @@ appear as log lines.
 The demo waveform sweeps 40–260 mg/dL over 45 minutes, so it crosses every alarm
 threshold in both directions while you watch.
 
+The display has a `--demo` of its own, and it is a different thing: where the
+gateway's invents data, the display's draws none at all. It cycles the panel
+through every digit — each one filling all three cells — and then `HI` and `LO`,
+holding each for `--demo-dwell` seconds (2 by default) before carrying on into
+normal operation:
+
+```sh
+cargo run -p glucobeacon-display -- --window --demo
+```
+
+It is the quick way to look at the glyphs, and on real hardware it doubles as a
+panel self-test: one pass lights every segment of every cell, so a dead row
+shows up as a gap that walks down the screen. The header says `self-test` while
+it runs, because a panel showing `888` and nothing else should never be mistaken
+for a reading. It is opt-in and runs once rather than looping — each frame is a
+full refresh, and an e-ink panel has a finite number of those.
+
 The panel's top-left corner says `GLUCOBEACON` unless it was built with a name
 of its own, which is how a household with two panels tells them apart:
 

@@ -63,6 +63,15 @@ struct Cli {
     #[arg(long)]
     ack: bool,
 
+    /// Cycle the panel through every digit and both pegged-sensor words at
+    /// startup, then carry on as normal.
+    #[arg(long)]
+    demo: bool,
+
+    /// How long each self-test frame stays up, in seconds.
+    #[arg(long, value_name = "SECS", default_value_t = 2, value_parser = clap::value_parser!(u64).range(1..=60))]
+    demo_dwell: u64,
+
     /// Log filter, e.g. `debug`.
     #[arg(long, env = "GLUCOBEACON_LOG", default_value = "info")]
     log: String,
@@ -155,6 +164,10 @@ fn run_node(
         "display node starting; press Enter to silence an alarm"
     );
 
+    if cli.demo {
+        run_demo(&mut panel, StdDuration::from_secs(cli.demo_dwell), stop)?;
+    }
+
     // The first tick always paints, so the window has a frame within one tick
     // of opening without a second refresh being spent here to arrange it.
     while !stop.load(Ordering::Acquire) {
@@ -219,6 +232,42 @@ fn run_node(
     }
 
     info!(refreshes = panel.flushes(), "display node stopping");
+    Ok(())
+}
+
+/// Cycles the panel through [`ui::DEMO`] once, holding each step for `dwell`.
+///
+/// Every step is a full refresh, which on real hardware is a second of flashing
+/// and a slice of the panel's finite refresh budget. That is why this is opt in
+/// and runs once rather than looping: it is for looking at the glyphs, not for
+/// leaving on. Packets that arrive meanwhile sit in the socket buffer and are
+/// read once it finishes, so the first live paint is a sequence-length late.
+fn run_demo(
+    panel: &mut SimPanel<PANEL_BYTES>,
+    dwell: StdDuration,
+    stop: &AtomicBool,
+) -> Result<()> {
+    info!(
+        steps = ui::DEMO.len(),
+        ?dwell,
+        "running the panel self-test"
+    );
+
+    for step in ui::DEMO {
+        if stop.load(Ordering::Acquire) {
+            break;
+        }
+        debug!(?step, "self-test frame");
+        ui::render_demo(panel, step).context("rendering the self-test")?;
+        panel.flush().context("refreshing the panel")?;
+
+        // Wait in tick-sized slices: a window closed mid-self-test should take
+        // the node down promptly rather than a whole dwell later.
+        let until = Instant::now() + dwell;
+        while Instant::now() < until && !stop.load(Ordering::Acquire) {
+            std::thread::sleep(TICK.min(until - Instant::now()));
+        }
+    }
     Ok(())
 }
 
@@ -307,6 +356,28 @@ mod tests {
         // larger than any monitor, is a typo rather than a request.
         assert!(Cli::try_parse_from(["glucobeacon-display", "--window-scale", "0"]).is_err());
         assert!(Cli::try_parse_from(["glucobeacon-display", "--window-scale", "16"]).is_err());
+    }
+
+    #[test]
+    fn the_self_test_is_off_unless_asked_for() {
+        // It costs a dozen refreshes and delays the first live paint, so a
+        // plain run must never do it.
+        let cli = Cli::try_parse_from(["glucobeacon-display"]).expect("parse");
+        assert!(!cli.demo);
+        assert_eq!(cli.demo_dwell, 2);
+
+        let cli = Cli::try_parse_from(["glucobeacon-display", "--demo", "--demo-dwell", "5"])
+            .expect("parse");
+        assert!(cli.demo);
+        assert_eq!(cli.demo_dwell, 5);
+    }
+
+    #[test]
+    fn a_self_test_dwell_of_zero_is_rejected() {
+        // Zero would flash the whole sequence past faster than e-ink can draw
+        // one frame of it, which is a typo rather than a request.
+        assert!(Cli::try_parse_from(["glucobeacon-display", "--demo-dwell", "0"]).is_err());
+        assert!(Cli::try_parse_from(["glucobeacon-display", "--demo-dwell", "600"]).is_err());
     }
 
     #[test]

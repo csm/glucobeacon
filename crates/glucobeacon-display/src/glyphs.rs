@@ -3,8 +3,14 @@
 //! The glucose value has to be readable across a room, which means digits on
 //! the order of 150 pixels tall. Bitmap fonts that size are large, and a font
 //! rasterizer is a dependency and a pile of flash this node does not have to
-//! spare — but seven-segment digits are just rectangles, and rectangles scale
+//! spare — but seven-segment digits are just seven polygons, and polygons scale
 //! for free. Same reasoning for the trend arrow.
+//!
+//! The segments are elongated hexagons — a full-thickness body with both ends
+//! mitred to a point — separated by a hairline gap, which is what a moulded LCD
+//! digit looks like. Plain rectangles fuse into each other at the corners; the
+//! mitres and the gap keep every segment's outline distinct, so a `0` cannot be
+//! misread as an `8` from across the room.
 
 use embedded_graphics::prelude::*;
 use embedded_graphics::primitives::{Primitive, PrimitiveStyle, Rectangle, Triangle};
@@ -26,6 +32,58 @@ const SEGMENTS: [u8; 10] = [
     0b1101111, // 9: a b c d f g
 ];
 
+/// A word the panel can spell where a number would go.
+///
+/// Seven segments do not make an alphabet, but they make these four letters
+/// cleanly, which is the whole vocabulary a pegged sensor needs.
+#[derive(Copy, Clone, PartialEq, Eq, Debug)]
+pub enum Word {
+    /// `HI` — the sensor is at the top of its range and cannot say how far past.
+    High,
+    /// `LO` — the sensor is at the bottom of its range.
+    Low,
+}
+
+impl Word {
+    /// The segment masks for the word's two letters, in reading order.
+    ///
+    /// `I` is the same pair of verticals a `1` is, which puts it at the right
+    /// of its cell and leaves an airy gap after the `H`. The left-hand pair
+    /// closes that gap, but then the `H`'s right stroke and the `I` sit a
+    /// digit's spacing apart and the pair reads as three bars — so the wide
+    /// gap is the one to keep.
+    const fn letters(self) -> [u8; 2] {
+        match self {
+            // H: b c e f g, then I: b c, as in a `1`.
+            Self::High => [0b1110110, 0b0000110],
+            // L: d e f, then O: the same ring as a zero.
+            Self::Low => [0b0111000, 0b0111111],
+        }
+    }
+}
+
+/// Draws a two-letter [`Word`], left-aligned at `origin`.
+///
+/// Returns the width drawn, matching [`draw_number`] so callers can lay out
+/// what follows the same way either way.
+pub fn draw_word<D>(
+    target: &mut D,
+    word: Word,
+    origin: Point,
+    style: &DigitStyle,
+    color: D::Color,
+) -> Result<u32, D::Error>
+where
+    D: DrawTarget,
+{
+    let mut x = origin.x;
+    for mask in word.letters() {
+        draw_mask(target, mask, Point::new(x, origin.y), style, color)?;
+        x += (style.width + style.spacing) as i32;
+    }
+    Ok(style.width_of(word.letters().len() as u32))
+}
+
 /// The size of a seven-segment digit.
 #[derive(Copy, Clone, PartialEq, Eq, Debug)]
 pub struct DigitStyle {
@@ -37,16 +95,26 @@ pub struct DigitStyle {
     pub thickness: u32,
     /// Gap between adjacent digits, in pixels.
     pub spacing: u32,
+    /// Gap between neighbouring segments of one digit, in pixels.
+    ///
+    /// Trimmed off each end of every segment, so two segments whose points
+    /// converge end up twice this far apart.
+    pub gap: u32,
 }
 
 impl DigitStyle {
     /// A style scaled to `height`, with proportions that read well on e-ink.
     pub const fn with_height(height: u32) -> Self {
+        let thickness = height / 10;
         Self {
             width: height / 2,
             height,
-            thickness: height / 10,
+            thickness,
             spacing: height / 12,
+            // A seam, not a space: converging points sit twice this far
+            // apart, and a `1` stops reading as one stroke well before the
+            // seam gets wide. Never zero, or the mitres fuse into a corner.
+            gap: if thickness < 8 { 1 } else { thickness / 8 },
         }
     }
 
@@ -104,21 +172,112 @@ pub fn draw_blank<D>(
 where
     D: DrawTarget,
 {
-    let fill = PrimitiveStyle::with_fill(color);
+    // Just the middle segment: an unmistakable "nothing here".
+    let (offset, size) = segments(style)[MIDDLE];
     for index in 0..count {
         let x = origin.x + (index * (style.width + style.spacing)) as i32;
-        // Just the middle segment: an unmistakable "nothing here".
-        Rectangle::new(
-            Point::new(
-                x + style.thickness as i32,
-                origin.y + (style.height / 2 - style.thickness / 2) as i32,
-            ),
-            Size::new(style.width - 2 * style.thickness, style.thickness),
-        )
-        .into_styled(fill)
-        .draw(target)?;
+        draw_segment(target, Point::new(x, origin.y) + offset, size, color)?;
     }
     Ok(style.width_of(count))
+}
+
+/// Where the middle segment (`g`) sits in [`segments`].
+const MIDDLE: usize = 6;
+
+/// The seven segment boxes in `a b c d e f g` order, as offsets from a digit's
+/// top-left corner paired with the extent each one fills.
+///
+/// Every segment is a stroke centred on a *spine*, half a stroke in from the
+/// face it runs along. There are three horizontal spines — `t/2`, `h/2` and
+/// `h - t/2` — and two vertical ones, `t/2` and `w - t/2`. Each segment runs
+/// from one spine crossing to the next and stops there.
+///
+/// That is the whole construction, and it is what makes the mitres work: two
+/// segments meeting at a crossing put their *points* on the same spot rather
+/// than butting one segment's point into the other's flank, so their diagonal
+/// edges lie on one line and the notch between them is even. It costs every
+/// horizontal half a stroke at each end — the bars are `w - t` wide, not `w` —
+/// and it is why the verticals reach to `t/2` rather than stopping at `t`.
+///
+/// A `1` is the case that shows whether the waist crossings are right: its two
+/// lit segments are verticals with nothing between them, so their points have
+/// to nearly touch. The digit's corners are the case for the outer crossings —
+/// get those wrong and the top bar juts out past the flank below it.
+///
+/// Every box is then trimmed by [`DigitStyle::gap`] at both ends to open the
+/// seam, so a converging pair ends up `2 * gap` apart.
+fn segments(style: &DigitStyle) -> [(Point, Size); 7] {
+    let t = style.thickness;
+    let w = style.width;
+    let h = style.height;
+    let g = style.gap;
+
+    // How far a spine sits from the face its segment runs along, and the waist.
+    let half = t / 2;
+    let waist = h / 2;
+    let upper = waist.saturating_sub(half);
+    let lower = (h - half).saturating_sub(waist);
+
+    let bar = Size::new((w - t).saturating_sub(2 * g), t);
+    let arm = |length: u32| Size::new(t, length.saturating_sub(2 * g));
+    let x_bar = (half + g) as i32;
+    let x_right = (w - t) as i32;
+    let y_upper = (half + g) as i32;
+    let y_lower = (waist + g) as i32;
+
+    [
+        (Point::new(x_bar, 0), bar),                     // a: top
+        (Point::new(x_right, y_upper), arm(upper)),      // b: upper right
+        (Point::new(x_right, y_lower), arm(lower)),      // c: lower right
+        (Point::new(x_bar, (h - t) as i32), bar),        // d: bottom
+        (Point::new(0, y_lower), arm(lower)),            // e: lower left
+        (Point::new(0, y_upper), arm(upper)),            // f: upper left
+        (Point::new(x_bar, (waist - half) as i32), bar), // g: middle
+    ]
+}
+
+/// Draws one segment as an elongated hexagon filling `size` from `origin`.
+///
+/// The long axis is whichever of `size` is larger; both of its ends taper to a
+/// point at 45°. `embedded-graphics` fills rectangles and triangles but not
+/// arbitrary polygons, and butting a triangle against a rectangle leaves a seam
+/// where the two rasterizers disagree — so the hexagon goes down as slices of
+/// the long axis, one pixel each, shortened as they approach the outer face.
+fn draw_segment<D>(
+    target: &mut D,
+    origin: Point,
+    size: Size,
+    color: D::Color,
+) -> Result<(), D::Error>
+where
+    D: DrawTarget,
+{
+    let horizontal = size.width >= size.height;
+    let (length, thickness) = if horizontal {
+        (size.width, size.height)
+    } else {
+        (size.height, size.width)
+    };
+
+    let fill = PrimitiveStyle::with_fill(color);
+    for slice in 0..thickness {
+        // How far this slice is from the segment's spine, which is exactly how
+        // far the 45° mitre pulls both of its ends in.
+        let inset = ((2 * slice + 1) as i32 - thickness as i32).unsigned_abs() / 2;
+        let run = length.saturating_sub(2 * inset);
+        if run == 0 {
+            continue;
+        }
+        let (offset, size) = if horizontal {
+            (Point::new(inset as i32, slice as i32), Size::new(run, 1))
+        } else {
+            (Point::new(slice as i32, inset as i32), Size::new(1, run))
+        };
+        Rectangle::new(origin + offset, size)
+            .into_styled(fill)
+            .draw(target)?;
+    }
+    Ok(())
 }
 
 /// Draws one seven-segment digit with its top-left corner at `origin`.
@@ -135,46 +294,23 @@ where
     let Some(mask) = SEGMENTS.get(digit as usize).copied() else {
         return Ok(());
     };
+    draw_mask(target, mask, origin, style, color)
+}
 
-    let fill = PrimitiveStyle::with_fill(color);
-    let t = style.thickness;
-    let w = style.width;
-    let h = style.height;
-    // Length of a vertical segment: half the digit, less the horizontal
-    // segments it meets at each end.
-    let arm = h / 2 - t - t / 2;
-
-    let segments = [
-        // a: top
-        (Point::new(t as i32, 0), Size::new(w - 2 * t, t)),
-        // b: upper right
-        (Point::new((w - t) as i32, t as i32), Size::new(t, arm)),
-        // c: lower right
-        (
-            Point::new((w - t) as i32, (h / 2 + t / 2) as i32),
-            Size::new(t, arm),
-        ),
-        // d: bottom
-        (
-            Point::new(t as i32, (h - t) as i32),
-            Size::new(w - 2 * t, t),
-        ),
-        // e: lower left
-        (Point::new(0, (h / 2 + t / 2) as i32), Size::new(t, arm)),
-        // f: upper left
-        (Point::new(0, t as i32), Size::new(t, arm)),
-        // g: middle
-        (
-            Point::new(t as i32, (h / 2 - t / 2) as i32),
-            Size::new(w - 2 * t, t),
-        ),
-    ];
-
-    for (index, (offset, size)) in segments.into_iter().enumerate() {
+/// Lights the segments named by `mask` in one digit cell at `origin`.
+fn draw_mask<D>(
+    target: &mut D,
+    mask: u8,
+    origin: Point,
+    style: &DigitStyle,
+    color: D::Color,
+) -> Result<(), D::Error>
+where
+    D: DrawTarget,
+{
+    for (index, (offset, size)) in segments(style).into_iter().enumerate() {
         if mask & (1 << index) != 0 {
-            Rectangle::new(origin + offset, size)
-                .into_styled(fill)
-                .draw(target)?;
+            draw_segment(target, origin + offset, size, color)?;
         }
     }
     Ok(())
@@ -379,6 +515,139 @@ mod tests {
     }
 
     #[test]
+    fn segments_taper_towards_their_outer_face() {
+        let style = DigitStyle::with_height(40);
+        let mut display = canvas();
+        // 7's top segment has nothing above it, so rows near y = 0 are its own.
+        draw_digit(&mut display, 7, Point::zero(), &style, BinaryColor::On).expect("draw");
+
+        let row = |y: u32| {
+            ink(
+                &display,
+                Rectangle::new(Point::new(0, y as i32), Size::new(style.width, 1)),
+            )
+        };
+        // The mitres pull the outermost row in from both ends; the spine runs
+        // the segment's full length.
+        assert!(
+            row(0) < row(style.thickness / 2),
+            "outer row {} is not shorter than the spine {}",
+            row(0),
+            row(style.thickness / 2)
+        );
+    }
+
+    #[test]
+    fn no_two_segments_of_a_digit_overlap() {
+        // A joint is diagonal, so no axis-aligned box describes it — but two
+        // segments sharing any pixel at all means a seam has closed. A plain
+        // `MockDisplay` panics on the second write, which checks every joint at
+        // once, and `8` is the digit that has all of them lit.
+        let mut display = MockDisplay::<BinaryColor>::new();
+        display.set_allow_out_of_bounds_drawing(true);
+        let style = DigitStyle::with_height(40);
+        draw_digit(&mut display, 8, Point::zero(), &style, BinaryColor::On).expect("draw");
+    }
+
+    #[test]
+    fn segments_stop_at_the_spine_crossings() {
+        let style = DigitStyle::with_height(40);
+        // Both a bar and a flank are centred half a stroke in from the face
+        // they run along, so each one's point lands on the other's spine —
+        // less the gap that keeps the two apart.
+        let reach = (style.thickness / 2 + style.gap) as i32;
+
+        // `7` lights the top bar with no left flank beneath it, so the bar's
+        // left point is exposed and can be measured along its own spine row.
+        let mut seven = canvas();
+        draw_digit(&mut seven, 7, Point::zero(), &style, BinaryColor::On).expect("draw");
+        let spine_row = (style.thickness / 2) as i32;
+        let bar_starts = (0..style.width as i32)
+            .find(|x| seven.get_pixel(Point::new(*x, spine_row)) == Some(BinaryColor::On))
+            .expect("the top bar drew nothing");
+        assert_eq!(
+            bar_starts, reach,
+            "the top bar juts out past where the left flank crosses it"
+        );
+
+        // `1` lights the right flank with no bar above it, likewise.
+        let mut one = canvas();
+        draw_digit(&mut one, 1, Point::zero(), &style, BinaryColor::On).expect("draw");
+        let spine_column = (style.width - style.thickness / 2 - 1) as i32;
+        let flank_starts = (0..style.height as i32)
+            .find(|y| one.get_pixel(Point::new(spine_column, *y)) == Some(BinaryColor::On))
+            .expect("the flank drew nothing");
+        assert_eq!(
+            flank_starts, reach,
+            "the flank stops short of where the top bar crosses it"
+        );
+    }
+
+    #[test]
+    fn the_points_of_a_one_nearly_meet_at_the_waist() {
+        let style = DigitStyle::with_height(40);
+        let mut display = canvas();
+        draw_digit(&mut display, 1, Point::zero(), &style, BinaryColor::On).expect("draw");
+
+        // Down the spine of the two verticals, where their points converge. A
+        // `1` has nothing lit between them, so this is the seam at its widest —
+        // and it is what decides whether a `1` reads as a single stroke or as
+        // two floating bars.
+        let x = (style.width - style.thickness / 2) as i32;
+        let lit: Vec<i32> = (0..style.height as i32)
+            .filter(|y| display.get_pixel(Point::new(x, *y)) == Some(BinaryColor::On))
+            .collect();
+        let seam = lit
+            .windows(2)
+            .map(|pair| pair[1] - pair[0] - 1)
+            .max()
+            .expect("the digit drew nothing");
+
+        assert!(seam > 0, "the two segments merged into one bar");
+        assert!(
+            seam <= 2 * style.gap as i32,
+            "a {seam}px seam at the waist reads as a hole, not a join"
+        );
+    }
+
+    #[test]
+    fn both_words_draw_two_distinguishable_letters() {
+        let style = DigitStyle::with_height(40);
+        let area = Rectangle::new(Point::zero(), Size::new(style.width_of(2), style.height));
+
+        let mut high = canvas();
+        let width = draw_word(
+            &mut high,
+            Word::High,
+            Point::zero(),
+            &style,
+            BinaryColor::On,
+        )
+        .expect("draw");
+        assert_eq!(width, style.width_of(2));
+
+        let mut low = canvas();
+        draw_word(&mut low, Word::Low, Point::zero(), &style, BinaryColor::On).expect("draw");
+
+        assert!(ink(&high, area) > 0);
+        assert!(ink(&low, area) > 0);
+        assert_ne!(
+            ink(&high, area),
+            ink(&low, area),
+            "HI and LO should not be the same shape"
+        );
+
+        // Both letters land in their own cell rather than piling into one.
+        for (name, display) in [("HI", &high), ("LO", &low)] {
+            for cell in 0..2u32 {
+                let x = (cell * (style.width + style.spacing)) as i32;
+                let box_ = Rectangle::new(Point::new(x, 0), Size::new(style.width, style.height));
+                assert!(ink(display, box_) > 0, "{name} letter {cell} is blank");
+            }
+        }
+    }
+
+    #[test]
     fn blanks_are_lighter_than_any_digit() {
         let style = DigitStyle::with_height(40);
         let area = Rectangle::new(Point::zero(), Size::new(style.width, style.height));
@@ -460,5 +729,11 @@ mod tests {
         assert_eq!(large.width, small.width * 4);
         assert_eq!(large.thickness, small.thickness * 4);
         assert_eq!(DigitStyle::with_height(100).width_of(0), 0);
+
+        // A gap that rounds to nothing puts the corners back together, so even
+        // the smallest style keeps a pixel of seam.
+        for height in [10, 20, 40, 190] {
+            assert!(DigitStyle::with_height(height).gap > 0, "height {height}");
+        }
     }
 }

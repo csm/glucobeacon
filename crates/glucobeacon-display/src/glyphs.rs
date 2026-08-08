@@ -45,8 +45,8 @@ pub struct DigitStyle {
     pub spacing: u32,
     /// Gap between neighbouring segments of one digit, in pixels.
     ///
-    /// Trimmed off each end of every segment, so two segments meeting at a
-    /// corner are pulled apart by roughly this much.
+    /// Trimmed off each end of every segment, so two segments whose points
+    /// converge end up twice this far apart.
     pub gap: u32,
 }
 
@@ -59,10 +59,10 @@ impl DigitStyle {
             height,
             thickness,
             spacing: height / 12,
-            // A quarter of the stroke: enough to read as a seam at arm's
-            // length, not so much that the digit falls apart across the room.
-            // Never zero, or the mitres fuse back into a solid corner.
-            gap: if thickness < 4 { 1 } else { thickness / 4 },
+            // A seam, not a space: converging points sit twice this far
+            // apart, and a `1` stops reading as one stroke well before the
+            // seam gets wide. Never zero, or the mitres fuse into a corner.
+            gap: if thickness < 8 { 1 } else { thickness / 8 },
         }
     }
 
@@ -135,32 +135,39 @@ const MIDDLE: usize = 6;
 /// The seven segment boxes in `a b c d e f g` order, as offsets from a digit's
 /// top-left corner paired with the extent each one fills.
 ///
-/// The mitres are what set the vertical segments' reach: a vertical segment's
-/// point lands exactly on the corner of the horizontal segment's body, so the
-/// two diagonal edges lie on the same line and the notch between them is even.
-/// That puts the upper verticals between the top segment and the middle one,
-/// and the lower verticals between the middle segment and the bottom one. Every
-/// box is then trimmed by [`DigitStyle::gap`] at both ends to open the seam.
+/// A mitre puts two segments' points nose to nose rather than butting one
+/// segment's point against the other's flank, which is what sets the reach of
+/// everything here. The verticals run all the way to the digit's waist, so at
+/// the middle of each side three points converge on one spot: the upper
+/// vertical's, the lower vertical's, and the middle bar's. A `1` is the case
+/// that shows whether this is right — its two lit segments are verticals with
+/// nothing between them, so their points have to nearly touch.
+///
+/// Paying for that costs the middle bar half a stroke at each end: if it ran
+/// the full width like the top and bottom bars do, the verticals would have to
+/// stop against its body corners, a whole stroke apart. Real moulded digits
+/// make the same trade, which is why their middle bar is the short one.
+///
+/// Every box is then trimmed by [`DigitStyle::gap`] at both ends to open the
+/// seam, so a converging pair ends up `2 * gap` apart.
 fn segments(style: &DigitStyle) -> [(Point, Size); 7] {
     let t = style.thickness;
     let w = style.width;
     let h = style.height;
     let g = style.gap;
 
-    // Where the middle segment sits, and how much room that leaves the arms
-    // above and below it.
-    let middle = (h - t) / 2;
-    let below_middle = middle + t;
-    let upper = middle.saturating_sub(t);
-    let lower = (h - t).saturating_sub(below_middle);
+    // The waist: where the verticals stop and the middle bar is centred.
+    let waist = h / 2;
+    let upper = waist.saturating_sub(t);
+    let lower = (h - t).saturating_sub(waist);
 
-    // Horizontal segments run the full width, points and all — the vertical
-    // ones tuck inside the mitres rather than being displaced by them.
+    // The top and bottom bars run the full width, points and all — the
+    // verticals tuck inside their mitres rather than being displaced by them.
     let bar = Size::new(w.saturating_sub(2 * g), t);
     let arm = |length: u32| Size::new(t, length.saturating_sub(2 * g));
     let x_right = (w - t) as i32;
     let y_upper = (t + g) as i32;
-    let y_lower = (below_middle + g) as i32;
+    let y_lower = (waist + g) as i32;
 
     [
         (Point::new(g as i32, 0), bar),              // a: top
@@ -169,7 +176,11 @@ fn segments(style: &DigitStyle) -> [(Point, Size); 7] {
         (Point::new(g as i32, (h - t) as i32), bar), // d: bottom
         (Point::new(0, y_lower), arm(lower)),        // e: lower left
         (Point::new(0, y_upper), arm(upper)),        // f: upper left
-        (Point::new(g as i32, middle as i32), bar),  // g: middle
+        // g: middle, pulled in half a stroke so its points meet the verticals'.
+        (
+            Point::new((t / 2 + g) as i32, (waist - t / 2) as i32),
+            Size::new(w.saturating_sub(t + 2 * g), t),
+        ),
     ]
 }
 
@@ -474,6 +485,33 @@ mod tests {
             Size::new(style.width, style.gap),
         );
         assert_eq!(ink(&display, seam), 0, "the top joint has no gap in it");
+    }
+
+    #[test]
+    fn the_points_of_a_one_nearly_meet_at_the_waist() {
+        let style = DigitStyle::with_height(40);
+        let mut display = canvas();
+        draw_digit(&mut display, 1, Point::zero(), &style, BinaryColor::On).expect("draw");
+
+        // Down the spine of the two verticals, where their points converge. A
+        // `1` has nothing lit between them, so this is the seam at its widest —
+        // and it is what decides whether a `1` reads as a single stroke or as
+        // two floating bars.
+        let x = (style.width - style.thickness / 2) as i32;
+        let lit: Vec<i32> = (0..style.height as i32)
+            .filter(|y| display.get_pixel(Point::new(x, *y)) == Some(BinaryColor::On))
+            .collect();
+        let seam = lit
+            .windows(2)
+            .map(|pair| pair[1] - pair[0] - 1)
+            .max()
+            .expect("the digit drew nothing");
+
+        assert!(seam > 0, "the two segments merged into one bar");
+        assert!(
+            seam <= 2 * style.gap as i32,
+            "a {seam}px seam at the waist reads as a hole, not a join"
+        );
     }
 
     #[test]

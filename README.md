@@ -72,6 +72,17 @@ appear as log lines.
 The demo waveform sweeps 40–260 mg/dL over 45 minutes, so it crosses every alarm
 threshold in both directions while you watch.
 
+The panel's top-left corner says `GLUCOBEACON` unless it was built with a name
+of its own, which is how a household with two panels tells them apart:
+
+```sh
+GLUCOBEACON_DISPLAY_TITLE="ROWAN" cargo run -p glucobeacon-display -- --window
+```
+
+That is a *compile*-time variable, not a runtime one — the real display node has
+no filesystem and no console to read a setting from, so the choice belongs to
+whoever builds the binary. See [firmware/README.md](firmware/README.md#display-name).
+
 ## Against a real Dexcom account
 
 The gateway needs a Dexcom **follower** account — the one a Share follower logs

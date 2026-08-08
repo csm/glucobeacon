@@ -66,6 +66,36 @@ is `esptool.py read_flash` away. That is an accepted trade for a device with
 nowhere else to put it, but it is worth knowing before this goes anywhere the
 board could be picked up.
 
+## Display name
+
+The panel's top-left corner says `GLUCOBEACON`. For a household with a name for
+the thing — or more than one panel to tell apart — set the name at build time,
+for the same reason as the credentials above: the display node has no
+filesystem and no console to be configured from.
+
+```sh
+export GLUCOBEACON_DISPLAY_TITLE="ROWAN"
+cargo +esp build --release
+```
+
+It applies to the simulator too, since both build the same `glucobeacon-display`
+crate:
+
+```sh
+GLUCOBEACON_DISPLAY_TITLE="ROWAN" cargo run -p glucobeacon-display -- --window
+```
+
+Cargo tracks the variable, so changing it rebuilds the crate rather than leaving
+the old name baked in. Two limits, both quiet rather than loud:
+
+- The panel's fonts are ASCII, so anything outside space through `~` draws as a
+  `?`. `cargo test -p glucobeacon-display` fails on a name that would.
+- Room is reserved for the link status on the right, and a name long enough to
+  reach it is cut short rather than drawn over it — about 39 characters, far
+  more than a name that is legible from across a room needs.
+
+Set it to the empty string to leave the corner blank.
+
 ## Building
 
 ```sh

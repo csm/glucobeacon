@@ -42,7 +42,7 @@ pub use app::{DisplayApp, Tick};
 pub use framebuffer::{FrameBuffer, bytes_for};
 pub use pattern::{Player, Timeline};
 pub use state::{Applied, DisplayState};
-pub use ui::{Frame, PANEL_HEIGHT, PANEL_WIDTH};
+pub use ui::{Frame, PANEL_HEIGHT, PANEL_WIDTH, TITLE, title};
 
 /// Bytes needed for a framebuffer covering the whole panel.
 pub const PANEL_BYTES: usize = bytes_for(PANEL_WIDTH, PANEL_HEIGHT);

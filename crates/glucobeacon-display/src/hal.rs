@@ -23,10 +23,19 @@ pub enum BuzzerPattern {
 
 impl BuzzerPattern {
     /// The pattern an alarm calls for.
+    ///
+    /// Only the urgent bands make noise. A plain high or low, and a feed that
+    /// has gone stale, are shown on the panel and on the button LED and are
+    /// left at that: those are conditions to notice and act on in your own
+    /// time, and a device that beeps at every one of them across a day is a
+    /// device whose beeps stop meaning anything. The buzzer is spent on the two
+    /// readings that want someone to look up right now.
+    ///
+    /// [`Self::Chirp`] and [`Self::DoubleBeep`] are kept for the gentler tiers
+    /// so restoring one is a line here rather than a new pattern.
     pub const fn for_alarm(kind: AlarmKind) -> Self {
         match kind {
-            AlarmKind::Stale => Self::Chirp,
-            AlarmKind::High | AlarmKind::Low => Self::DoubleBeep,
+            AlarmKind::Stale | AlarmKind::High | AlarmKind::Low => Self::Quiet,
             AlarmKind::UrgentHigh | AlarmKind::UrgentLow => Self::Urgent,
         }
     }
@@ -133,29 +142,29 @@ mod tests {
     }
 
     #[test]
-    fn ordinary_alarms_are_less_insistent_than_urgent_ones() {
-        assert_eq!(
-            BuzzerPattern::for_alarm(AlarmKind::Low),
-            BuzzerPattern::DoubleBeep
-        );
-        assert_eq!(
-            BuzzerPattern::for_alarm(AlarmKind::Stale),
-            BuzzerPattern::Chirp
-        );
+    fn only_urgent_alarms_make_any_sound() {
+        // The buzzer is a scarce resource: spend it on the two bands that want
+        // someone to look up now, and let the panel and LED carry the rest.
+        for kind in [AlarmKind::Stale, AlarmKind::High, AlarmKind::Low] {
+            assert_eq!(BuzzerPattern::for_alarm(kind), BuzzerPattern::Quiet);
+            assert!(!BuzzerPattern::for_alarm(kind).is_audible(), "{kind:?}");
+        }
+        for kind in [AlarmKind::UrgentHigh, AlarmKind::UrgentLow] {
+            assert!(BuzzerPattern::for_alarm(kind).is_audible(), "{kind:?}");
+        }
     }
 
     #[test]
-    fn every_alarm_pattern_makes_a_sound() {
-        for kind in [
-            AlarmKind::Stale,
-            AlarmKind::High,
-            AlarmKind::Low,
-            AlarmKind::UrgentHigh,
-            AlarmKind::UrgentLow,
-        ] {
-            assert!(BuzzerPattern::for_alarm(kind).is_audible(), "{kind:?}");
+    fn a_silent_band_still_shows_on_the_led() {
+        // Silent must not mean invisible: the panel and the button are how a
+        // plain high or a stale feed gets noticed at all now.
+        for kind in [AlarmKind::Stale, AlarmKind::High, AlarmKind::Low] {
+            assert_eq!(
+                LedState::for_alarm(Some(kind), false),
+                LedState::SlowBlink,
+                "{kind:?}"
+            );
         }
-        assert!(!BuzzerPattern::Quiet.is_audible());
     }
 
     #[test]

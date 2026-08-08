@@ -19,12 +19,6 @@ use crate::state::{Applied, DisplayState};
 /// which is the fastest way to teach someone to ignore it.
 pub const BOOT_GRACE: Duration = Duration::from_secs(90);
 
-/// How long the buzzer sounds for each announcement.
-///
-/// Long enough to wake someone, short enough that an unattended alarm is not
-/// a continuous scream — the re-announce interval brings it back.
-pub const SOUND_FOR: Duration = Duration::from_secs(30);
-
 /// What one tick concluded.
 #[derive(Copy, Clone, PartialEq, Eq, Debug, Default)]
 pub struct Tick {
@@ -154,7 +148,15 @@ impl DisplayApp {
         if let Some(event) = event
             && event.is_audible()
         {
-            self.sounding_until = Some(now.saturating_add(SOUND_FOR));
+            // The burst stops itself after a few cycles; this window is only
+            // how long the pattern stays *selected*, so that the next
+            // announcement reads as a change and starts the burst again.
+            // An announcement for a band that does not buzz still lights the
+            // LED and repaints — it just has no burst to schedule.
+            let pattern = BuzzerPattern::for_alarm(event.kind());
+            if pattern.is_audible() {
+                self.sounding_until = Some(now.saturating_add(pattern.burst()));
+            }
         }
         if self.alarms.active().is_none() {
             self.sounding_until = None;
@@ -280,7 +282,7 @@ mod tests {
         assert_eq!(app.tick(secs(1)).event, None);
         let tick = app.tick(BOOT_GRACE);
         assert_eq!(tick.event, Some(AlarmEvent::Raised(AlarmKind::Stale)));
-        assert_eq!(tick.buzzer, Some(BuzzerPattern::Chirp));
+        assert_eq!(tick.buzzer, None, "a stale feed is shown, not buzzed");
         assert_eq!(tick.led, Some(LedState::SlowBlink));
     }
 
@@ -294,7 +296,7 @@ mod tests {
         let tick = app.tick(BOOT_GRACE);
         assert_eq!(tick.event, Some(AlarmEvent::Cleared(AlarmKind::Stale)));
         assert_eq!(app.alarm(), None);
-        assert_eq!(tick.buzzer, Some(BuzzerPattern::Quiet));
+        assert_eq!(tick.buzzer, None, "it was never buzzing");
         assert_eq!(tick.led, Some(LedState::Off));
     }
 
@@ -311,18 +313,50 @@ mod tests {
     }
 
     #[test]
+    fn a_plain_high_is_shown_but_never_buzzed() {
+        let (mut app, uptime) = running();
+        app.handle_packet(&reading(190, 1_000_300, 1_000_330), uptime);
+        let tick = app.tick(uptime);
+
+        assert_eq!(tick.event, Some(AlarmEvent::Raised(AlarmKind::High)));
+        assert_eq!(tick.buzzer, None, "190 is worth seeing, not worth hearing");
+        assert_eq!(tick.led, Some(LedState::SlowBlink), "but the button is lit");
+
+        // Parked there for half an hour, re-announcements and all: still quiet.
+        for minute in 1..=30 {
+            assert_eq!(
+                app.tick(uptime + secs(minute * 60)).buzzer,
+                None,
+                "minute {minute}"
+            );
+        }
+    }
+
+    #[test]
+    fn crossing_into_urgent_high_is_what_starts_the_buzzer() {
+        let (mut app, uptime) = running();
+        app.handle_packet(&reading(190, 1_000_300, 1_000_330), uptime);
+        assert_eq!(app.tick(uptime).buzzer, None);
+
+        app.handle_packet(&reading(255, 1_000_600, 1_000_630), uptime + secs(300));
+        let tick = app.tick(uptime + secs(300));
+        assert!(matches!(tick.event, Some(AlarmEvent::Escalated { .. })));
+        assert_eq!(tick.buzzer, Some(BuzzerPattern::Urgent));
+        assert_eq!(tick.led, Some(LedState::FastBlink));
+    }
+
+    #[test]
     fn the_buzzer_stops_after_the_announcement_and_returns_on_the_next() {
         let (mut app, uptime) = running();
         app.handle_packet(&reading(52, 1_000_300, 1_000_330), uptime);
         app.tick(uptime);
 
-        // Still sounding partway through the announcement.
-        assert_eq!(app.tick(uptime + secs(10)).buzzer, None);
-        // Quiet once it finishes.
-        assert_eq!(
-            app.tick(uptime + SOUND_FOR).buzzer,
-            Some(BuzzerPattern::Quiet)
-        );
+        // Still on the burst pattern partway through the announcement.
+        let burst = BuzzerPattern::Urgent.burst();
+        assert_eq!(app.tick(uptime + secs(1)).buzzer, None);
+        // Back to quiet once it finishes — a few seconds, not half a minute.
+        assert!(burst <= secs(5), "an announcement is a burst, not a siren");
+        assert_eq!(app.tick(uptime + burst).buzzer, Some(BuzzerPattern::Quiet));
         // And back for the re-announcement five minutes later.
         let tick = app.tick(uptime + secs(301));
         assert_eq!(
@@ -474,6 +508,7 @@ mod tests {
         let stale_after = app.state().policy().stale_after.as_secs();
         let tick = app.tick(uptime + secs(stale_after));
         assert_eq!(tick.event, Some(AlarmEvent::Raised(AlarmKind::Stale)));
-        assert_eq!(tick.buzzer, Some(BuzzerPattern::Chirp));
+        assert_eq!(tick.buzzer, None, "a stale feed is shown, not buzzed");
+        assert_eq!(tick.led, Some(LedState::SlowBlink));
     }
 }

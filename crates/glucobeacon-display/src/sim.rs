@@ -206,10 +206,13 @@ impl Buzzer for ConsoleBuzzer {
     fn set_pattern(&mut self, pattern: BuzzerPattern) -> Result<(), Self::Error> {
         self.pattern = pattern;
         match pattern {
+            // Each audible pattern is a burst of a few seconds, not a state the
+            // buzzer sits in; the log says so, so that watching the simulator
+            // does not suggest a device that beeps until someone stops it.
             BuzzerPattern::Quiet => info!("buzzer: off"),
-            BuzzerPattern::Chirp => info!("buzzer: chirp"),
-            BuzzerPattern::DoubleBeep => info!("buzzer: beep beep ..."),
-            BuzzerPattern::Urgent => info!("buzzer: BEEP BEEP BEEP BEEP"),
+            BuzzerPattern::Chirp => info!("buzzer: chirp (one beep)"),
+            BuzzerPattern::DoubleBeep => info!("buzzer: beep beep, twice over"),
+            BuzzerPattern::Urgent => info!("buzzer: BEEP-BEEP-BEEP, three times over"),
         }
         Ok(())
     }

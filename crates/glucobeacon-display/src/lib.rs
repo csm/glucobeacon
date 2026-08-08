@@ -9,7 +9,9 @@
 //! [`app`] is the logic, with no I/O in it. [`hal`] is the hardware, as traits.
 //! [`framebuffer`] is what gets drawn into. [`sim`] implements the traits
 //! against a workstation — the panel becomes an image file, the buzzer and LED
-//! log, and the button is the Enter key.
+//! log, and the button is the Enter key. With the `window` feature the panel
+//! also appears in a window on the host, which is the quickest way to iterate
+//! on the layout without hardware in front of you.
 //!
 //! Everything except [`sim`] is `no_std` and allocation-free, so it runs on the
 //! ESP32-S3 unchanged. Build with `default-features = false` for a bare-metal
@@ -32,6 +34,9 @@ pub mod ui;
 
 #[cfg(feature = "sim")]
 pub mod sim;
+
+#[cfg(feature = "window")]
+pub mod window;
 
 pub use app::{DisplayApp, Tick};
 pub use framebuffer::{FrameBuffer, bytes_for};

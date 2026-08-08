@@ -109,7 +109,21 @@ is async; rather than contort either, they meet at a queue.
 
 `app` is the logic and has no I/O in it: packets and time go in, redraw
 decisions and buzzer patterns come out. `hal` is the hardware as traits. `sim`
-implements those traits against a workstation.
+implements those traits against a workstation, and `window` — behind the
+`window` feature, `--window` on the binary — mirrors the simulated panel into a
+window on the host so the layout can be tuned without hardware.
+
+The window is fed the packed framebuffer that `sim::SimPanel` flushes, which is
+byte-for-byte what would be clocked into the panel controller; it expands one
+bit per pixel into ink or paper and nothing else. That is what makes it worth
+trusting: there is no second renderer that could disagree with the device.
+
+Two consequences fall out of the host being macOS. AppKit refuses to be driven
+from anywhere but the main thread, so the window runs on the main thread and the
+display node moves to a worker, mailing frames over a channel — the reverse of
+how the headless sim runs. And the channel is one-way and lossy by design: a
+closed window is a dropped send, never an error the node has to handle, because
+the node holds the alarm state and must outlive its own debugging aids.
 
 Two things here are shaped by the panel:
 

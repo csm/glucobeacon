@@ -10,6 +10,7 @@ use std::io::{self, BufRead, BufWriter, Write};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::mpsc::Sender;
 
 use embedded_graphics::pixelcolor::BinaryColor;
 use embedded_graphics::prelude::*;
@@ -18,15 +19,50 @@ use tracing::info;
 use crate::framebuffer::FrameBuffer;
 use crate::hal::{Button, Buzzer, BuzzerPattern, Indicator, LedState, Panel};
 
+/// One refreshed panel image, as it would go to the controller.
+///
+/// The bits are the packed framebuffer — MSB-first, rows padded to whole bytes
+/// — copied out so the panel can carry on drawing the next frame while whoever
+/// asked for this one is still looking at it.
+#[derive(Clone, PartialEq, Eq, Hash, Debug)]
+pub struct PanelFrame {
+    /// Panel width in pixels.
+    pub width: u32,
+    /// Panel height in pixels.
+    pub height: u32,
+    /// Which refresh this was, counting from one.
+    pub refresh: u32,
+    /// The packed bits, row-major, MSB-first, a set bit meaning ink.
+    pub bits: Vec<u8>,
+}
+
+impl PanelFrame {
+    /// Whether the pixel at `(x, y)` is inked. Out-of-bounds reads are `false`.
+    pub fn get(&self, x: u32, y: u32) -> bool {
+        if x >= self.width || y >= self.height {
+            return false;
+        }
+        let stride = (self.width as usize).div_ceil(8);
+        let index = y as usize * stride + (x / 8) as usize;
+        self.bits
+            .get(index)
+            .is_some_and(|byte| byte & (0x80 >> (x % 8)) != 0)
+    }
+}
+
 /// A framebuffer that writes itself out as a netpbm bitmap on flush.
 ///
 /// Wraps the same packed [`FrameBuffer`] the device uses, so what lands in the
 /// file is bit-for-bit what would be clocked into the panel controller — and
 /// the sim cannot accidentally have more room to draw in than the hardware.
+///
+/// A flush can also be mirrored to a channel — see [`SimPanel::mirror_to`] —
+/// which is how the `window` module's host window gets its pixels.
 pub struct SimPanel<const BYTES: usize> {
     buffer: FrameBuffer<BYTES>,
     path: PathBuf,
     flushes: u32,
+    mirror: Option<Sender<PanelFrame>>,
 }
 
 impl<const BYTES: usize> fmt::Debug for SimPanel<BYTES> {
@@ -48,7 +84,27 @@ impl<const BYTES: usize> SimPanel<BYTES> {
             buffer: FrameBuffer::new(width, height)?,
             path: path.into(),
             flushes: 0,
+            mirror: None,
         })
+    }
+
+    /// Also sends every refresh down `sender`.
+    ///
+    /// For watching the panel live rather than reopening a file. The send is
+    /// non-blocking and a closed channel is not an error: the window going away
+    /// must not take the display node down with it.
+    pub fn mirror_to(&mut self, sender: Sender<PanelFrame>) {
+        self.mirror = Some(sender);
+    }
+
+    /// The current contents, packaged as a [`PanelFrame`].
+    pub fn frame(&self) -> PanelFrame {
+        PanelFrame {
+            width: self.buffer.width(),
+            height: self.buffer.height(),
+            refresh: self.flushes,
+            bits: self.buffer.as_bytes().to_vec(),
+        }
     }
 
     /// How many times the panel has been refreshed.
@@ -110,6 +166,11 @@ impl<const BYTES: usize> Panel for SimPanel<BYTES> {
         self.flushes += 1;
         let path = self.path.clone();
         self.write_pbm(&path)?;
+        if let Some(mirror) = &self.mirror {
+            // A window that has been closed leaves a dead channel behind. That
+            // is a window going away, not a panel failing, so it is dropped.
+            let _ = mirror.send(self.frame());
+        }
         info!(
             path = %path.display(),
             refresh = self.flushes,
@@ -185,6 +246,9 @@ impl Indicator for ConsoleLed {
 }
 
 /// A button wired to the terminal: press Enter to silence.
+///
+/// The latch is shared, so a second source of presses — a keystroke in the host
+/// window, say — can drive the same button by setting it.
 #[derive(Debug)]
 pub struct StdinButton {
     pressed: Arc<AtomicBool>,
@@ -196,7 +260,13 @@ impl StdinButton {
     /// Any line — Enter is enough — counts as a press. The flag is latched, so
     /// a press between polls is never dropped.
     pub fn spawn() -> io::Result<Self> {
-        let pressed = Arc::new(AtomicBool::new(false));
+        Self::spawn_with_latch(Arc::new(AtomicBool::new(false)))
+    }
+
+    /// As [`StdinButton::spawn`], but over a latch the caller already holds.
+    ///
+    /// Storing `true` in `pressed` from anywhere is a press.
+    pub fn spawn_with_latch(pressed: Arc<AtomicBool>) -> io::Result<Self> {
         let flag = Arc::clone(&pressed);
 
         std::thread::Builder::new()
@@ -325,6 +395,61 @@ mod tests {
         assert_eq!(pixels.len(), 4);
         assert_eq!(pixels, [0xFF, 0xF0, 0xFF, 0xF0]);
         let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn a_mirrored_panel_sends_every_refresh() {
+        let path = temp_path("mirror");
+        let (tx, rx) = std::sync::mpsc::channel();
+        let mut panel = panel!(16, 4, &path);
+        panel.mirror_to(tx);
+
+        Rectangle::new(Point::zero(), Size::new(8, 4))
+            .into_styled(PrimitiveStyle::with_fill(BinaryColor::On))
+            .draw(&mut panel)
+            .expect("draw");
+        panel.flush().expect("flush");
+        panel.flush().expect("flush");
+
+        let first = rx.try_recv().expect("a frame");
+        assert_eq!((first.width, first.height, first.refresh), (16, 4, 1));
+        assert_eq!(first.bits, [0xFF, 0x00].repeat(4));
+        assert!(first.get(0, 0), "the left half is inked");
+        assert!(!first.get(8, 0), "the right half is not");
+        assert!(!first.get(99, 99), "and off the panel is not either");
+
+        assert_eq!(rx.try_recv().expect("a second frame").refresh, 2);
+        assert!(rx.try_recv().is_err(), "and no more than one per flush");
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn a_closed_mirror_does_not_break_the_panel() {
+        // The window is a debugging aid. Closing it must not take the node down
+        // with it, least of all the part that decides when to make noise.
+        let path = temp_path("hangup");
+        let (tx, rx) = std::sync::mpsc::channel();
+        let mut panel = panel!(8, 8, &path);
+        panel.mirror_to(tx);
+        drop(rx);
+
+        panel.flush().expect("flush must survive a closed mirror");
+        assert_eq!(panel.flushes(), 1);
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn a_shared_latch_is_a_button_press() {
+        // What lets a keystroke in the host window drive the same button the
+        // terminal does.
+        let latch = Arc::new(AtomicBool::new(false));
+        let mut button = StdinButton {
+            pressed: Arc::clone(&latch),
+        };
+
+        latch.store(true, Ordering::Release);
+        assert!(button.take_press().expect("poll"));
+        assert!(!latch.load(Ordering::Acquire), "the latch is consumed");
     }
 
     #[test]

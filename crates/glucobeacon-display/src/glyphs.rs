@@ -3,8 +3,14 @@
 //! The glucose value has to be readable across a room, which means digits on
 //! the order of 150 pixels tall. Bitmap fonts that size are large, and a font
 //! rasterizer is a dependency and a pile of flash this node does not have to
-//! spare — but seven-segment digits are just rectangles, and rectangles scale
+//! spare — but seven-segment digits are just seven polygons, and polygons scale
 //! for free. Same reasoning for the trend arrow.
+//!
+//! The segments are elongated hexagons — a full-thickness body with both ends
+//! mitred to a point — separated by a hairline gap, which is what a moulded LCD
+//! digit looks like. Plain rectangles fuse into each other at the corners; the
+//! mitres and the gap keep every segment's outline distinct, so a `0` cannot be
+//! misread as an `8` from across the room.
 
 use embedded_graphics::prelude::*;
 use embedded_graphics::primitives::{Primitive, PrimitiveStyle, Rectangle, Triangle};
@@ -37,16 +43,26 @@ pub struct DigitStyle {
     pub thickness: u32,
     /// Gap between adjacent digits, in pixels.
     pub spacing: u32,
+    /// Gap between neighbouring segments of one digit, in pixels.
+    ///
+    /// Trimmed off each end of every segment, so two segments meeting at a
+    /// corner are pulled apart by roughly this much.
+    pub gap: u32,
 }
 
 impl DigitStyle {
     /// A style scaled to `height`, with proportions that read well on e-ink.
     pub const fn with_height(height: u32) -> Self {
+        let thickness = height / 10;
         Self {
             width: height / 2,
             height,
-            thickness: height / 10,
+            thickness,
             spacing: height / 12,
+            // A quarter of the stroke: enough to read as a seam at arm's
+            // length, not so much that the digit falls apart across the room.
+            // Never zero, or the mitres fuse back into a solid corner.
+            gap: if thickness < 4 { 1 } else { thickness / 4 },
         }
     }
 
@@ -104,21 +120,101 @@ pub fn draw_blank<D>(
 where
     D: DrawTarget,
 {
-    let fill = PrimitiveStyle::with_fill(color);
+    // Just the middle segment: an unmistakable "nothing here".
+    let (offset, size) = segments(style)[MIDDLE];
     for index in 0..count {
         let x = origin.x + (index * (style.width + style.spacing)) as i32;
-        // Just the middle segment: an unmistakable "nothing here".
-        Rectangle::new(
-            Point::new(
-                x + style.thickness as i32,
-                origin.y + (style.height / 2 - style.thickness / 2) as i32,
-            ),
-            Size::new(style.width - 2 * style.thickness, style.thickness),
-        )
-        .into_styled(fill)
-        .draw(target)?;
+        draw_segment(target, Point::new(x, origin.y) + offset, size, color)?;
     }
     Ok(style.width_of(count))
+}
+
+/// Where the middle segment (`g`) sits in [`segments`].
+const MIDDLE: usize = 6;
+
+/// The seven segment boxes in `a b c d e f g` order, as offsets from a digit's
+/// top-left corner paired with the extent each one fills.
+///
+/// The mitres are what set the vertical segments' reach: a vertical segment's
+/// point lands exactly on the corner of the horizontal segment's body, so the
+/// two diagonal edges lie on the same line and the notch between them is even.
+/// That puts the upper verticals between the top segment and the middle one,
+/// and the lower verticals between the middle segment and the bottom one. Every
+/// box is then trimmed by [`DigitStyle::gap`] at both ends to open the seam.
+fn segments(style: &DigitStyle) -> [(Point, Size); 7] {
+    let t = style.thickness;
+    let w = style.width;
+    let h = style.height;
+    let g = style.gap;
+
+    // Where the middle segment sits, and how much room that leaves the arms
+    // above and below it.
+    let middle = (h - t) / 2;
+    let below_middle = middle + t;
+    let upper = middle.saturating_sub(t);
+    let lower = (h - t).saturating_sub(below_middle);
+
+    // Horizontal segments run the full width, points and all — the vertical
+    // ones tuck inside the mitres rather than being displaced by them.
+    let bar = Size::new(w.saturating_sub(2 * g), t);
+    let arm = |length: u32| Size::new(t, length.saturating_sub(2 * g));
+    let x_right = (w - t) as i32;
+    let y_upper = (t + g) as i32;
+    let y_lower = (below_middle + g) as i32;
+
+    [
+        (Point::new(g as i32, 0), bar),              // a: top
+        (Point::new(x_right, y_upper), arm(upper)),  // b: upper right
+        (Point::new(x_right, y_lower), arm(lower)),  // c: lower right
+        (Point::new(g as i32, (h - t) as i32), bar), // d: bottom
+        (Point::new(0, y_lower), arm(lower)),        // e: lower left
+        (Point::new(0, y_upper), arm(upper)),        // f: upper left
+        (Point::new(g as i32, middle as i32), bar),  // g: middle
+    ]
+}
+
+/// Draws one segment as an elongated hexagon filling `size` from `origin`.
+///
+/// The long axis is whichever of `size` is larger; both of its ends taper to a
+/// point at 45°. `embedded-graphics` fills rectangles and triangles but not
+/// arbitrary polygons, and butting a triangle against a rectangle leaves a seam
+/// where the two rasterizers disagree — so the hexagon goes down as slices of
+/// the long axis, one pixel each, shortened as they approach the outer face.
+fn draw_segment<D>(
+    target: &mut D,
+    origin: Point,
+    size: Size,
+    color: D::Color,
+) -> Result<(), D::Error>
+where
+    D: DrawTarget,
+{
+    let horizontal = size.width >= size.height;
+    let (length, thickness) = if horizontal {
+        (size.width, size.height)
+    } else {
+        (size.height, size.width)
+    };
+
+    let fill = PrimitiveStyle::with_fill(color);
+    for slice in 0..thickness {
+        // How far this slice is from the segment's spine, which is exactly how
+        // far the 45° mitre pulls both of its ends in.
+        let inset = ((2 * slice + 1) as i32 - thickness as i32).unsigned_abs() / 2;
+        let run = length.saturating_sub(2 * inset);
+        if run == 0 {
+            continue;
+        }
+        let (offset, size) = if horizontal {
+            (Point::new(inset as i32, slice as i32), Size::new(run, 1))
+        } else {
+            (Point::new(slice as i32, inset as i32), Size::new(1, run))
+        };
+        Rectangle::new(origin + offset, size)
+            .into_styled(fill)
+            .draw(target)?;
+    }
+    Ok(())
 }
 
 /// Draws one seven-segment digit with its top-left corner at `origin`.
@@ -136,45 +232,9 @@ where
         return Ok(());
     };
 
-    let fill = PrimitiveStyle::with_fill(color);
-    let t = style.thickness;
-    let w = style.width;
-    let h = style.height;
-    // Length of a vertical segment: half the digit, less the horizontal
-    // segments it meets at each end.
-    let arm = h / 2 - t - t / 2;
-
-    let segments = [
-        // a: top
-        (Point::new(t as i32, 0), Size::new(w - 2 * t, t)),
-        // b: upper right
-        (Point::new((w - t) as i32, t as i32), Size::new(t, arm)),
-        // c: lower right
-        (
-            Point::new((w - t) as i32, (h / 2 + t / 2) as i32),
-            Size::new(t, arm),
-        ),
-        // d: bottom
-        (
-            Point::new(t as i32, (h - t) as i32),
-            Size::new(w - 2 * t, t),
-        ),
-        // e: lower left
-        (Point::new(0, (h / 2 + t / 2) as i32), Size::new(t, arm)),
-        // f: upper left
-        (Point::new(0, t as i32), Size::new(t, arm)),
-        // g: middle
-        (
-            Point::new(t as i32, (h / 2 - t / 2) as i32),
-            Size::new(w - 2 * t, t),
-        ),
-    ];
-
-    for (index, (offset, size)) in segments.into_iter().enumerate() {
+    for (index, (offset, size)) in segments(style).into_iter().enumerate() {
         if mask & (1 << index) != 0 {
-            Rectangle::new(origin + offset, size)
-                .into_styled(fill)
-                .draw(target)?;
+            draw_segment(target, origin + offset, size, color)?;
         }
     }
     Ok(())
@@ -379,6 +439,44 @@ mod tests {
     }
 
     #[test]
+    fn segments_taper_towards_their_outer_face() {
+        let style = DigitStyle::with_height(40);
+        let mut display = canvas();
+        // 7's top segment has nothing above it, so rows near y = 0 are its own.
+        draw_digit(&mut display, 7, Point::zero(), &style, BinaryColor::On).expect("draw");
+
+        let row = |y: u32| {
+            ink(
+                &display,
+                Rectangle::new(Point::new(0, y as i32), Size::new(style.width, 1)),
+            )
+        };
+        // The mitres pull the outermost row in from both ends; the spine runs
+        // the segment's full length.
+        assert!(
+            row(0) < row(style.thickness / 2),
+            "outer row {} is not shorter than the spine {}",
+            row(0),
+            row(style.thickness / 2)
+        );
+    }
+
+    #[test]
+    fn a_seam_separates_segments_that_would_otherwise_meet() {
+        let style = DigitStyle::with_height(40);
+        let mut display = canvas();
+        // 8 lights everything, so every joint in the digit is under test.
+        draw_digit(&mut display, 8, Point::zero(), &style, BinaryColor::On).expect("draw");
+
+        // The band between the top segment and the two verticals below it.
+        let seam = Rectangle::new(
+            Point::new(0, style.thickness as i32),
+            Size::new(style.width, style.gap),
+        );
+        assert_eq!(ink(&display, seam), 0, "the top joint has no gap in it");
+    }
+
+    #[test]
     fn blanks_are_lighter_than_any_digit() {
         let style = DigitStyle::with_height(40);
         let area = Rectangle::new(Point::zero(), Size::new(style.width, style.height));
@@ -460,5 +558,11 @@ mod tests {
         assert_eq!(large.width, small.width * 4);
         assert_eq!(large.thickness, small.thickness * 4);
         assert_eq!(DigitStyle::with_height(100).width_of(0), 0);
+
+        // A gap that rounds to nothing puts the corners back together, so even
+        // the smallest style keeps a pixel of seam.
+        for height in [10, 20, 40, 190] {
+            assert!(DigitStyle::with_height(height).gap > 0, "height {height}");
+        }
     }
 }

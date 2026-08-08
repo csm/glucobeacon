@@ -136,8 +136,9 @@ reason to spend a refresh.
 
 **There is no font.** Digits readable across a dark room are ~190 px tall, and a
 bitmap font that size is a lot of flash on a node that has none to spare. The
-digits are drawn as seven segments of rectangles and the arrow as triangles, so
-both scale for free and cost nothing.
+digits are drawn as seven hexagonal segments — mitred at both ends and held
+apart by a hairline gap, the way a moulded LCD digit looks — and the arrow as
+triangles, so both scale for free and cost nothing.
 
 The node also has no RTC and no NTP. It learns the wall clock from the `sent_at`
 stamp on every packet and carries it forward on a monotonic uptime counter.

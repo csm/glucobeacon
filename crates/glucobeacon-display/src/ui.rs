@@ -8,8 +8,8 @@
 
 use core::fmt::Write as _;
 
-use embedded_graphics::mono_font::MonoTextStyle;
 use embedded_graphics::mono_font::ascii::{FONT_6X10, FONT_9X18_BOLD, FONT_10X20};
+use embedded_graphics::mono_font::{MonoFont, MonoTextStyle};
 use embedded_graphics::pixelcolor::BinaryColor;
 use embedded_graphics::prelude::*;
 use embedded_graphics::primitives::{Line, PrimitiveStyle, Rectangle};
@@ -35,6 +35,36 @@ const BANNER_TOP: i32 = 316;
 const BANNER_HEIGHT: u32 = 52;
 const GRAPH_TOP: i32 = 384;
 const GRAPH_BOTTOM: i32 = 468;
+
+/// The name in the header's top-left corner.
+///
+/// `GLUCOBEACON` unless `GLUCOBEACON_DISPLAY_TITLE` was set when the binary was
+/// built, in which case that is baked in instead. Compile time rather than run
+/// time because the display node is the end with no filesystem, no console, and
+/// no settings screen — the same reason the gateway's credentials arrive this
+/// way. Cargo tracks the variable, so changing it rebuilds this crate.
+///
+/// Set it to the empty string to leave the corner blank. The fonts here are
+/// ASCII-only, so anything outside space through `~` draws as `?`; [`title`]
+/// also cuts the text to what fits beside the link status.
+pub const TITLE: &str = match option_env!("GLUCOBEACON_DISPLAY_TITLE") {
+    Some(text) => text,
+    None => "GLUCOBEACON",
+};
+
+const TITLE_FONT: &MonoFont<'static> = &FONT_9X18_BOLD;
+const STATUS_FONT: &MonoFont<'static> = &FONT_10X20;
+
+/// The longest status line [`draw_header`] can put on the right: `"link "`, the
+/// longest [`link_age`] its `String<16>` can hold, the separator with its
+/// spaces, and the longest uplink label. The labels are the part that could
+/// quietly outgrow this, so the tests check them against it.
+const STATUS_MAX_CHARS: u32 = 5 + 16 + 5 + 14;
+
+/// What is left of the header for the title once the status has its worst-case
+/// share, less a gap so the two never touch.
+const TITLE_MAX_WIDTH: u32 =
+    PANEL_WIDTH - 2 * MARGIN as u32 - STATUS_MAX_CHARS * STATUS_FONT.character_size.width - 16;
 
 /// What goes between the fields of the header and the subline.
 ///
@@ -86,7 +116,7 @@ fn draw_header<D>(target: &mut D, frame: &Frame<'_>) -> Result<(), D::Error>
 where
     D: DrawTarget<Color = BinaryColor>,
 {
-    let bold = MonoTextStyle::new(&FONT_9X18_BOLD, BinaryColor::On);
+    let bold = MonoTextStyle::new(TITLE_FONT, BinaryColor::On);
     let left = TextStyleBuilder::new()
         .alignment(Alignment::Left)
         .baseline(Baseline::Middle)
@@ -96,7 +126,7 @@ where
         .baseline(Baseline::Middle)
         .build();
 
-    Text::with_text_style("GLUCOBEACON", Point::new(MARGIN, 22), bold, left).draw(target)?;
+    Text::with_text_style(title(), Point::new(MARGIN, 22), bold, left).draw(target)?;
 
     let mut status: String<64> = String::new();
     let _ = write!(status, "link {}", link_age(frame));
@@ -104,7 +134,7 @@ where
     Text::with_text_style(
         &status,
         Point::new(PANEL_WIDTH as i32 - MARGIN, 22),
-        MonoTextStyle::new(&FONT_10X20, BinaryColor::On),
+        MonoTextStyle::new(STATUS_FONT, BinaryColor::On),
         right,
     )
     .draw(target)?;
@@ -115,6 +145,28 @@ where
     )
     .into_styled(PrimitiveStyle::with_stroke(BinaryColor::On, 2))
     .draw(target)
+}
+
+/// [`TITLE`], cut to the width the header has for it.
+///
+/// A title long enough to reach the link status loses its tail rather than
+/// drawing over it — an overlap on a monochrome panel is two words of ink on
+/// top of each other, which reads as a fault rather than as a long name.
+pub fn title() -> &'static str {
+    fit(TITLE, TITLE_MAX_WIDTH)
+}
+
+/// The longest prefix of `text` that fits in `max_width` pixels of [`TITLE_FONT`].
+///
+/// Cut on a character boundary: slicing a `&str` mid-character panics, and the
+/// text here comes from whoever ran the build.
+fn fit(text: &str, max_width: u32) -> &str {
+    let per_char = TITLE_FONT.character_size.width + TITLE_FONT.character_spacing;
+    let room = (max_width / per_char.max(1)) as usize;
+    match text.char_indices().nth(room) {
+        Some((end, _)) => &text[..end],
+        None => text,
+    }
 }
 
 fn draw_reading<D>(target: &mut D, frame: &Frame<'_>) -> Result<(), D::Error>
@@ -402,15 +454,86 @@ mod tests {
         assert!(drawable(&text), "{text}");
     }
 
+    /// Every `UplinkState`, so a new one cannot be added without the header
+    /// tests seeing it.
+    const UPLINK_STATES: [UplinkState; 5] = [
+        UplinkState::Ok,
+        UplinkState::NoNetwork,
+        UplinkState::AuthFailed,
+        UplinkState::Unreachable,
+        UplinkState::NoRecentData,
+    ];
+
+    #[test]
+    fn the_compiled_in_title_has_glyphs() {
+        // Whatever `GLUCOBEACON_DISPLAY_TITLE` held at build time is what this
+        // sees, so a build that bakes in an accented name fails here rather
+        // than shipping a header full of question marks.
+        assert!(drawable(title()), "{}", title());
+    }
+
+    #[test]
+    fn the_compiled_in_title_fits_the_header() {
+        assert_eq!(title(), TITLE, "the title is being truncated: {TITLE}");
+    }
+
+    #[test]
+    fn an_over_long_title_loses_its_tail_rather_than_the_status() {
+        let per_char = TITLE_FONT.character_size.width + TITLE_FONT.character_spacing;
+        let long = "A VERY LONG NAME FOR A LITTLE BEDSIDE PANEL INDEED";
+        let cut = fit(long, TITLE_MAX_WIDTH);
+
+        assert!(long.len() > cut.len(), "this title should not have fit");
+        assert!(long.starts_with(cut));
+        assert!(cut.chars().count() as u32 * per_char <= TITLE_MAX_WIDTH);
+    }
+
+    #[test]
+    fn a_title_that_fits_is_left_alone() {
+        assert_eq!(fit("GLUCOBEACON", TITLE_MAX_WIDTH), "GLUCOBEACON");
+        assert_eq!(fit("", TITLE_MAX_WIDTH), "");
+    }
+
+    #[test]
+    fn truncation_lands_on_a_character_boundary() {
+        // Multi-byte characters draw as `?`, but they must not make the cut
+        // panic on the way there.
+        assert_eq!(fit("ÉÉÉÉ", 2 * 9), "ÉÉ");
+    }
+
+    #[test]
+    fn the_header_keeps_room_for_the_longest_status_it_can_write() {
+        // `TITLE_MAX_WIDTH` is carved out of the header by assuming a worst
+        // case for the right-hand side; this checks that assumption against the
+        // labels that actually go there.
+        let longest = UPLINK_STATES
+            .iter()
+            .map(|state| state.label().chars().count())
+            .max()
+            .expect("labels");
+        // "link " + the widest `link_age` a String<16> can hold + "  |  ".
+        assert!(
+            (5 + 16 + 5 + longest) as u32 <= STATUS_MAX_CHARS,
+            "an uplink label outgrew the space the header reserves"
+        );
+    }
+
+    #[test]
+    fn the_title_and_the_status_do_not_overlap() {
+        // The widest header this can produce: a full-length title beside a
+        // long status, checked for a gap between them rather than for pixels.
+        let mut status: String<64> = String::new();
+        let _ = write!(status, "link 1440m quiet  {SEPARATOR}  no sensor data");
+        let status_left = PANEL_WIDTH as i32
+            - MARGIN
+            - (status.chars().count() as u32 * STATUS_FONT.character_size.width) as i32;
+        let title_right = MARGIN + TITLE_MAX_WIDTH as i32;
+        assert!(title_right < status_left, "{title_right} vs {status_left}");
+    }
+
     #[test]
     fn every_uplink_label_has_a_glyph() {
-        for state in [
-            UplinkState::Ok,
-            UplinkState::NoNetwork,
-            UplinkState::AuthFailed,
-            UplinkState::Unreachable,
-            UplinkState::NoRecentData,
-        ] {
+        for state in UPLINK_STATES {
             assert!(drawable(state.label()), "{state:?}: {}", state.label());
         }
     }

@@ -113,6 +113,19 @@ implements those traits against a workstation, and `window` — behind the
 `window` feature, `--window` on the binary — mirrors the simulated panel into a
 window on the host so the layout can be tuned without hardware.
 
+Two rules govern the buzzer, and both exist to keep it meaning something:
+
+- **Only the urgent bands make a sound.** An urgent high or urgent low buzzes;
+  a plain high, a plain low, and a stale feed are shown on the panel and on the
+  button LED and left at that. The engine still raises, eases and clears all
+  five alarms — silence is a display decision, taken in
+  `BuzzerPattern::for_alarm`, so nothing about the state machine changes.
+- **An announcement is a burst, not a siren.** Audible patterns play a fixed
+  few cycles and stop themselves; an alarm nobody deals with comes back on the
+  policy's re-announce interval rather than sounding continuously. A buzzer
+  that will not stop gets muffled, unplugged, or ignored — and then it is not
+  there for the reading that mattered.
+
 The window is fed the packed framebuffer that `sim::SimPanel` flushes, which is
 byte-for-byte what would be clocked into the panel controller; it expands one
 bit per pixel into ink or paper and nothing else. That is what makes it worth

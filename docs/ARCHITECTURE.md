@@ -138,7 +138,10 @@ reason to spend a refresh.
 bitmap font that size is a lot of flash on a node that has none to spare. The
 digits are drawn as seven hexagonal segments — mitred at both ends and held
 apart by a hairline gap, the way a moulded LCD digit looks — and the arrow as
-triangles, so both scale for free and cost nothing.
+triangles, so both scale for free and cost nothing. The same seven segments
+spell `HI` and `LO`, which is what the panel shows when the sensor pegs: a G6
+reports 400 whether the truth is 401 or 600, so printing the clamp would dress a
+limit up as a measurement.
 
 The node also has no RTC and no NTP. It learns the wall clock from the `sent_at`
 stamp on every packet and carries it forward on a monotonic uptime counter.

@@ -32,6 +32,58 @@ const SEGMENTS: [u8; 10] = [
     0b1101111, // 9: a b c d f g
 ];
 
+/// A word the panel can spell where a number would go.
+///
+/// Seven segments do not make an alphabet, but they make these four letters
+/// cleanly, which is the whole vocabulary a pegged sensor needs.
+#[derive(Copy, Clone, PartialEq, Eq, Debug)]
+pub enum Word {
+    /// `HI` — the sensor is at the top of its range and cannot say how far past.
+    High,
+    /// `LO` — the sensor is at the bottom of its range.
+    Low,
+}
+
+impl Word {
+    /// The segment masks for the word's two letters, in reading order.
+    ///
+    /// `I` is the same pair of verticals a `1` is, which puts it at the right
+    /// of its cell and leaves an airy gap after the `H`. The left-hand pair
+    /// closes that gap, but then the `H`'s right stroke and the `I` sit a
+    /// digit's spacing apart and the pair reads as three bars — so the wide
+    /// gap is the one to keep.
+    const fn letters(self) -> [u8; 2] {
+        match self {
+            // H: b c e f g, then I: b c, as in a `1`.
+            Self::High => [0b1110110, 0b0000110],
+            // L: d e f, then O: the same ring as a zero.
+            Self::Low => [0b0111000, 0b0111111],
+        }
+    }
+}
+
+/// Draws a two-letter [`Word`], left-aligned at `origin`.
+///
+/// Returns the width drawn, matching [`draw_number`] so callers can lay out
+/// what follows the same way either way.
+pub fn draw_word<D>(
+    target: &mut D,
+    word: Word,
+    origin: Point,
+    style: &DigitStyle,
+    color: D::Color,
+) -> Result<u32, D::Error>
+where
+    D: DrawTarget,
+{
+    let mut x = origin.x;
+    for mask in word.letters() {
+        draw_mask(target, mask, Point::new(x, origin.y), style, color)?;
+        x += (style.width + style.spacing) as i32;
+    }
+    Ok(style.width_of(word.letters().len() as u32))
+}
+
 /// The size of a seven-segment digit.
 #[derive(Copy, Clone, PartialEq, Eq, Debug)]
 pub struct DigitStyle {
@@ -242,7 +294,20 @@ where
     let Some(mask) = SEGMENTS.get(digit as usize).copied() else {
         return Ok(());
     };
+    draw_mask(target, mask, origin, style, color)
+}
 
+/// Lights the segments named by `mask` in one digit cell at `origin`.
+fn draw_mask<D>(
+    target: &mut D,
+    mask: u8,
+    origin: Point,
+    style: &DigitStyle,
+    color: D::Color,
+) -> Result<(), D::Error>
+where
+    D: DrawTarget,
+{
     for (index, (offset, size)) in segments(style).into_iter().enumerate() {
         if mask & (1 << index) != 0 {
             draw_segment(target, origin + offset, size, color)?;
@@ -512,6 +577,43 @@ mod tests {
             seam <= 2 * style.gap as i32,
             "a {seam}px seam at the waist reads as a hole, not a join"
         );
+    }
+
+    #[test]
+    fn both_words_draw_two_distinguishable_letters() {
+        let style = DigitStyle::with_height(40);
+        let area = Rectangle::new(Point::zero(), Size::new(style.width_of(2), style.height));
+
+        let mut high = canvas();
+        let width = draw_word(
+            &mut high,
+            Word::High,
+            Point::zero(),
+            &style,
+            BinaryColor::On,
+        )
+        .expect("draw");
+        assert_eq!(width, style.width_of(2));
+
+        let mut low = canvas();
+        draw_word(&mut low, Word::Low, Point::zero(), &style, BinaryColor::On).expect("draw");
+
+        assert!(ink(&high, area) > 0);
+        assert!(ink(&low, area) > 0);
+        assert_ne!(
+            ink(&high, area),
+            ink(&low, area),
+            "HI and LO should not be the same shape"
+        );
+
+        // Both letters land in their own cell rather than piling into one.
+        for (name, display) in [("HI", &high), ("LO", &low)] {
+            for cell in 0..2u32 {
+                let x = (cell * (style.width + style.spacing)) as i32;
+                let box_ = Rectangle::new(Point::new(x, 0), Size::new(style.width, style.height));
+                assert!(ink(display, box_) > 0, "{name} letter {cell} is blank");
+            }
+        }
     }
 
     #[test]

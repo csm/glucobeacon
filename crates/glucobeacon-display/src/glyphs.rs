@@ -187,18 +187,22 @@ const MIDDLE: usize = 6;
 /// The seven segment boxes in `a b c d e f g` order, as offsets from a digit's
 /// top-left corner paired with the extent each one fills.
 ///
-/// A mitre puts two segments' points nose to nose rather than butting one
-/// segment's point against the other's flank, which is what sets the reach of
-/// everything here. The verticals run all the way to the digit's waist, so at
-/// the middle of each side three points converge on one spot: the upper
-/// vertical's, the lower vertical's, and the middle bar's. A `1` is the case
-/// that shows whether this is right — its two lit segments are verticals with
-/// nothing between them, so their points have to nearly touch.
+/// Every segment is a stroke centred on a *spine*, half a stroke in from the
+/// face it runs along. There are three horizontal spines — `t/2`, `h/2` and
+/// `h - t/2` — and two vertical ones, `t/2` and `w - t/2`. Each segment runs
+/// from one spine crossing to the next and stops there.
 ///
-/// Paying for that costs the middle bar half a stroke at each end: if it ran
-/// the full width like the top and bottom bars do, the verticals would have to
-/// stop against its body corners, a whole stroke apart. Real moulded digits
-/// make the same trade, which is why their middle bar is the short one.
+/// That is the whole construction, and it is what makes the mitres work: two
+/// segments meeting at a crossing put their *points* on the same spot rather
+/// than butting one segment's point into the other's flank, so their diagonal
+/// edges lie on one line and the notch between them is even. It costs every
+/// horizontal half a stroke at each end — the bars are `w - t` wide, not `w` —
+/// and it is why the verticals reach to `t/2` rather than stopping at `t`.
+///
+/// A `1` is the case that shows whether the waist crossings are right: its two
+/// lit segments are verticals with nothing between them, so their points have
+/// to nearly touch. The digit's corners are the case for the outer crossings —
+/// get those wrong and the top bar juts out past the flank below it.
 ///
 /// Every box is then trimmed by [`DigitStyle::gap`] at both ends to open the
 /// seam, so a converging pair ends up `2 * gap` apart.
@@ -208,31 +212,27 @@ fn segments(style: &DigitStyle) -> [(Point, Size); 7] {
     let h = style.height;
     let g = style.gap;
 
-    // The waist: where the verticals stop and the middle bar is centred.
+    // How far a spine sits from the face its segment runs along, and the waist.
+    let half = t / 2;
     let waist = h / 2;
-    let upper = waist.saturating_sub(t);
-    let lower = (h - t).saturating_sub(waist);
+    let upper = waist.saturating_sub(half);
+    let lower = (h - half).saturating_sub(waist);
 
-    // The top and bottom bars run the full width, points and all — the
-    // verticals tuck inside their mitres rather than being displaced by them.
-    let bar = Size::new(w.saturating_sub(2 * g), t);
+    let bar = Size::new((w - t).saturating_sub(2 * g), t);
     let arm = |length: u32| Size::new(t, length.saturating_sub(2 * g));
+    let x_bar = (half + g) as i32;
     let x_right = (w - t) as i32;
-    let y_upper = (t + g) as i32;
+    let y_upper = (half + g) as i32;
     let y_lower = (waist + g) as i32;
 
     [
-        (Point::new(g as i32, 0), bar),              // a: top
-        (Point::new(x_right, y_upper), arm(upper)),  // b: upper right
-        (Point::new(x_right, y_lower), arm(lower)),  // c: lower right
-        (Point::new(g as i32, (h - t) as i32), bar), // d: bottom
-        (Point::new(0, y_lower), arm(lower)),        // e: lower left
-        (Point::new(0, y_upper), arm(upper)),        // f: upper left
-        // g: middle, pulled in half a stroke so its points meet the verticals'.
-        (
-            Point::new((t / 2 + g) as i32, (waist - t / 2) as i32),
-            Size::new(w.saturating_sub(t + 2 * g), t),
-        ),
+        (Point::new(x_bar, 0), bar),                     // a: top
+        (Point::new(x_right, y_upper), arm(upper)),      // b: upper right
+        (Point::new(x_right, y_lower), arm(lower)),      // c: lower right
+        (Point::new(x_bar, (h - t) as i32), bar),        // d: bottom
+        (Point::new(0, y_lower), arm(lower)),            // e: lower left
+        (Point::new(0, y_upper), arm(upper)),            // f: upper left
+        (Point::new(x_bar, (waist - half) as i32), bar), // g: middle
     ]
 }
 
@@ -538,18 +538,49 @@ mod tests {
     }
 
     #[test]
-    fn a_seam_separates_segments_that_would_otherwise_meet() {
+    fn no_two_segments_of_a_digit_overlap() {
+        // A joint is diagonal, so no axis-aligned box describes it — but two
+        // segments sharing any pixel at all means a seam has closed. A plain
+        // `MockDisplay` panics on the second write, which checks every joint at
+        // once, and `8` is the digit that has all of them lit.
+        let mut display = MockDisplay::<BinaryColor>::new();
+        display.set_allow_out_of_bounds_drawing(true);
         let style = DigitStyle::with_height(40);
-        let mut display = canvas();
-        // 8 lights everything, so every joint in the digit is under test.
         draw_digit(&mut display, 8, Point::zero(), &style, BinaryColor::On).expect("draw");
+    }
 
-        // The band between the top segment and the two verticals below it.
-        let seam = Rectangle::new(
-            Point::new(0, style.thickness as i32),
-            Size::new(style.width, style.gap),
+    #[test]
+    fn segments_stop_at_the_spine_crossings() {
+        let style = DigitStyle::with_height(40);
+        // Both a bar and a flank are centred half a stroke in from the face
+        // they run along, so each one's point lands on the other's spine —
+        // less the gap that keeps the two apart.
+        let reach = (style.thickness / 2 + style.gap) as i32;
+
+        // `7` lights the top bar with no left flank beneath it, so the bar's
+        // left point is exposed and can be measured along its own spine row.
+        let mut seven = canvas();
+        draw_digit(&mut seven, 7, Point::zero(), &style, BinaryColor::On).expect("draw");
+        let spine_row = (style.thickness / 2) as i32;
+        let bar_starts = (0..style.width as i32)
+            .find(|x| seven.get_pixel(Point::new(*x, spine_row)) == Some(BinaryColor::On))
+            .expect("the top bar drew nothing");
+        assert_eq!(
+            bar_starts, reach,
+            "the top bar juts out past where the left flank crosses it"
         );
-        assert_eq!(ink(&display, seam), 0, "the top joint has no gap in it");
+
+        // `1` lights the right flank with no bar above it, likewise.
+        let mut one = canvas();
+        draw_digit(&mut one, 1, Point::zero(), &style, BinaryColor::On).expect("draw");
+        let spine_column = (style.width - style.thickness / 2 - 1) as i32;
+        let flank_starts = (0..style.height as i32)
+            .find(|y| one.get_pixel(Point::new(spine_column, *y)) == Some(BinaryColor::On))
+            .expect("the flank drew nothing");
+        assert_eq!(
+            flank_starts, reach,
+            "the flank stops short of where the top bar crosses it"
+        );
     }
 
     #[test]

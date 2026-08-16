@@ -138,6 +138,11 @@ from the firmware's own pin map, so the diagram cannot disagree with the code.
 See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the memory budget, the
 radio parameters, and what each hardware trait needs.
 
+With the boards in hand, [docs/BRINGUP.md](docs/BRINGUP.md) is the order to
+bring them up in: toolchain, pin map, first flash, peripherals, panel, gateway,
+link — each stage ending in something you can observe, so a failure is one new
+thing rather than four at once.
+
 ## Status
 
 The domain logic, wire protocol, Dexcom client, radio parameters, and both node

@@ -15,6 +15,8 @@ firmware/
 ## Status
 
 Skeletons, written but **not yet compiled** — see "What is not verified" below.
+[`docs/BRINGUP.md`](../docs/BRINGUP.md) is the staged path from here to a
+working pair of nodes, and says what to expect at each step.
 
 The logic they depend on is written and tested on the host, and the crates it
 comes from are verified to compile for `xtensa-esp32s3-none-elf`:
